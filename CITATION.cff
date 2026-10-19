@@ -12,7 +12,8 @@ authors:
 repository-code: https://github.com/V-Sekai-fire/interactor-motion-matching-guest
 license: MIT
 abstract: mm.elf, motion matching as a character controller in a godot-sandbox guest, with a
-  database of 36 Kimodo locomotion clips (data/kimodo-locomotion).
+  database of 51 Kimodo clips (data/kimodo-locomotion) and 21 clips of the O3DE MotionMatching gem
+  (data/o3de-motionmatching).
 keywords:
 - motion matching
 - character controller
@@ -54,7 +55,7 @@ references:
   - name: NVIDIA
   url: https://huggingface.co/nvidia/Kimodo-SOMA-RP-v1.1
   license-url: https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license
-  notes: NVIDIA Open Model License. The animation model; the 36 clips in data/kimodo-locomotion are
+  notes: NVIDIA Open Model License. The animation model; the 51 clips in data/kimodo-locomotion are
     its output (50 steps, seed 1171). They are the output of a program; no person recorded them.
 - type: software
   title: Llama-3-Kimodo-GGML (LLM2Vec encoder, Meta Llama 3)
@@ -65,3 +66,14 @@ references:
   license-url: https://www.llama.com/llama3/license/
   notes: Meta Llama 3 Community License. Made the prompt embeddings for the clips ahead of time.
     This repository does not contain the encoder or the Llama 3 model. Built with Meta Llama 3.
+- type: data
+  title: O3DE MotionMatching gem animations
+  authors:
+  - name: Open 3D Engine contributors
+  repository-code: https://github.com/o3de/o3de/tree/development/Gems/MotionMatching/Assets/Animations
+  license:
+  - Apache-2.0
+  - MIT
+  notes: Motion capture of the Rin character (walks, jogs, runs, pivots, turns, circles, snake,
+    crouching, jumps); 21 of its 22 clips (not Pushes1) moved to SOMA30 by tools/fbx_to_soma.gd
+    in data/o3de-motionmatching, with the O3DE licence files.
