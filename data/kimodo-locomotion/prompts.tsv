@@ -1,0 +1,36 @@
+idle	A person stands still and looks around, shifting their weight.
+walk	A person walks forward in a straight line at a normal pace.
+walk_slow	A person walks forward slowly in a straight line.
+walk_fast	A person walks forward quickly in a straight line.
+jog	A person jogs forward in a straight line.
+run	A person runs forward fast in a straight line.
+walk_left	A person walks forward and slowly curves to the left.
+walk_right	A person walks forward and slowly curves to the right.
+walk_circle_left	A person walks in a circle to the left.
+walk_circle_right	A person walks in a circle to the right.
+run_left	A person runs forward and curves to the left.
+run_right	A person runs forward and curves to the right.
+walk_zigzag	A person walks forward in a zigzag, turning left and right.
+walk_back	A person walks backward in a straight line.
+strafe_left	A person sidesteps to the left while facing forward.
+strafe_right	A person sidesteps to the right while facing forward.
+diag_left	A person walks diagonally forward and to the left while facing forward.
+diag_right	A person walks diagonally forward and to the right while facing forward.
+turn_left	A person stands in place and turns to the left.
+turn_right	A person stands in place and turns to the right.
+turn_around	A person walks forward, turns around, and walks back.
+start_walk	A person stands still, then starts walking forward.
+stop_walk	A person walks forward, then stops and stands still.
+start_run	A person stands still, then starts running forward.
+stop_run	A person runs forward, then slows down and stops.
+walk_to_run	A person walks forward, then speeds up into a run.
+run_to_walk	A person runs forward, then slows down to a walk.
+wander	A person walks around slowly, stopping and turning in different directions.
+run_long	A person runs forward fast without stopping for the whole time.
+run_steady	A person keeps running forward at a steady fast pace.
+sprint	A person sprints forward as fast as they can.
+jog_long	A person keeps jogging forward at an even pace without stopping.
+run_circle_left	A person keeps running in a big circle to the left.
+run_circle_right	A person keeps running in a big circle to the right.
+jog_left	A person keeps jogging forward and gently curves to the left.
+jog_right	A person keeps jogging forward and gently curves to the right.

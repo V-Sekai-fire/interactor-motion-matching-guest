@@ -1,0 +1,33 @@
+model kimodo_soma
+prompt A person walks forward, then stops and stands still.
+frames 300 fps 30.0 joints 30 steps 50 seed 1171
+Hips
+Spine1
+Spine2
+Chest
+Neck1
+Neck2
+Head
+Jaw
+LeftEye
+RightEye
+LeftShoulder
+LeftArm
+LeftForeArm
+LeftHand
+LeftHandThumbEnd
+LeftHandMiddleEnd
+RightShoulder
+RightArm
+RightForeArm
+RightHand
+RightHandThumbEnd
+RightHandMiddleEnd
+LeftLeg
+LeftShin
+LeftFoot
+LeftToeBase
+RightLeg
+RightShin
+RightFoot
+RightToeBase
