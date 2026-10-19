@@ -1,0 +1,67 @@
+cff-version: 1.2.0
+title: interactor-motion-matching-guest
+message: If you use this software or its motion database, please cite it and the upstream sources
+  listed under `references`.
+type: software
+authors:
+- &fire
+  family-names: Lee
+  given-names: K. S. Ernest (iFire)
+  alias: fire
+  website: https://github.com/fire
+repository-code: https://github.com/V-Sekai-fire/interactor-motion-matching-guest
+license: MIT
+abstract: mm.elf, motion matching as a character controller in a godot-sandbox guest, with a
+  database of 36 Kimodo locomotion clips (data/kimodo-locomotion).
+keywords:
+- motion matching
+- character controller
+- godot-sandbox
+references:
+- type: software
+  title: godot-motion-matching
+  authors:
+  - family-names: Sousa
+    given-names: Guilherme
+    alias: GuilhermeGSousa
+  repository-code: https://github.com/V-Sekai/godot-motion-matching
+  license: MIT
+  notes: The algorithm this guest ports (pose database, trajectory and bone features,
+    normalisation, weighted k-d tree, velocity spring).
+- type: software
+  title: godot-sandbox
+  authors:
+  - name: godot-sandbox contributors
+  repository-code: https://github.com/V-Sekai-fire/godot-sandbox
+  license: BSD-3-Clause
+  notes: The RISC-V sandbox that runs mm.elf.
+- type: software
+  title: interactor-motion-guest
+  authors:
+  - *fire
+  repository-code: https://github.com/V-Sekai-fire/interactor-motion-guest
+  license: MIT
+  notes: motion.elf, which made the clips in data/kimodo-locomotion.
+- type: software
+  title: Kimodo
+  authors:
+  - name: NVIDIA
+  repository-code: https://github.com/nv-tlabs/kimodo
+  license: Apache-2.0
+- type: software
+  title: Kimodo-SOMA-RP-v1.1
+  authors:
+  - name: NVIDIA
+  url: https://huggingface.co/nvidia/Kimodo-SOMA-RP-v1.1
+  license-url: https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license
+  notes: NVIDIA Open Model License. The animation model; the 36 clips in data/kimodo-locomotion are
+    its output (50 steps, seed 1171). They are the output of a program; no person recorded them.
+- type: software
+  title: Llama-3-Kimodo-GGML (LLM2Vec encoder, Meta Llama 3)
+  authors:
+  - *fire
+  - name: Meta
+  url: https://huggingface.co/chibifire/Llama-3-Kimodo-GGML
+  license-url: https://www.llama.com/llama3/license/
+  notes: Meta Llama 3 Community License. Made the prompt embeddings for the clips ahead of time.
+    This repository does not contain the encoder or the Llama 3 model. Built with Meta Llama 3.
