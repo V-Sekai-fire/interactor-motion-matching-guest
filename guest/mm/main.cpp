@@ -10,11 +10,14 @@
 //                                                dx dz (root travel, first to last frame),
 //                                                median and 90th-percentile ground speed
 //   mm_reset(x, z, yaw, clip)                    start the character there, playing `clip`
-//   mm_step(dt, vx, vz, facing)                  one frame: the wanted ground velocity (m/s,
+//   mm_step(dt, vx, vz, facing, mode, jump)      one frame: the wanted ground velocity (m/s,
 //                                                SOMA metres, world), facing = strafe yaw or
-//                                                NaN to face the way it moves -> 13 floats:
+//                                                NaN to face the way it moves, mode 0 stand /
+//                                                1 crouch / 2 crawl, jump 1 on the frame it is
+//                                                pressed -> 15 floats:
 //     clip, time, char_x, char_z, char_yaw, root_x, root_z, root_yaw, switched, cost,
-//     sim_x, sim_z, sim_yaw
+//     sim_x, sim_z, sim_yaw, pose kind (0 stand 1 crouch 2 crawl 4 air), jumping
+//   mm_modes()                                   per mode: name poses median_moving_speed
 //   The host places the rig so the clip's root at `time` (root_*) lands on the character
 //   (char_*): model = T(char) Ry(char_yaw) Ry(-root_yaw) T(-root).
 #include <api.hpp>
@@ -96,17 +99,43 @@ static Variant mm_reset(double x, double z, double yaw, int64_t clip) {
 	return text("RESET " + g_db.clips[size_t(c)].name);
 }
 
-static Variant mm_step(double dt, double vx, double vz, double facing) {
+static Variant mm_step(double dt, double vx, double vz, double facing, int64_t mode, int64_t jump) {
 	std::vector<float> out;
 	if (g_baked) {
-		const bool sw = g_ctl.update(float(dt), mm::v3{float(vx), 0, float(vz)}, float(facing));
+		const bool sw = g_ctl.update(float(dt), mm::v3{float(vx), 0, float(vz)}, float(facing), int(mode), jump != 0);
 		const mm::Clip &c = g_db.clips[size_t(g_ctl.clip)];
 		const mm::v3 r = mm::Database::sample_root(c, g_ctl.time);
+		const int f = std::clamp(int(std::lround(g_ctl.time * c.fps)), 0, c.frames - 1);
 		out = {float(g_ctl.clip), g_ctl.time, g_ctl.char_pos.x, g_ctl.char_pos.z, g_ctl.char_yaw, r.x, r.z,
 				mm::Database::sample_yaw(c, g_ctl.time), sw ? 1.0f : 0.0f, g_ctl.last_cost, g_ctl.sim_pos.x,
-				g_ctl.sim_pos.z, g_ctl.sim_yaw};
+				g_ctl.sim_pos.z, g_ctl.sim_yaw, float(c.kind[size_t(f)]), g_ctl.jumping() ? 1.0f : 0.0f};
 	}
 	return Variant(PackedArray<float>(out));
+}
+
+// Per mode (stand, crouch, crawl, jump): pose count and the median ground speed of its moving
+// poses (m/s), so the host asks for speeds the clips have.
+static Variant mm_modes() {
+	std::string out;
+	char line[128];
+	const char *names[] = {"stand", "crouch", "crawl", "jump"};
+	for (int m = 0; m < mm::kModes; ++m) {
+		std::vector<float> v;
+		for (int i : g_db.mode_rows[m]) {
+			const mm::Clip &c = g_db.clips[size_t(g_db.pose_clip[size_t(i)])];
+			const int f = g_db.pose_frame[size_t(i)];
+			const int h = f + 1 < c.frames ? f + 1 : f;
+			const float s = h == f ? 0.0f : mm::len(c.root[size_t(h)] - c.root[size_t(f)]) * c.fps;
+			if (s > 0.2f) {
+				v.push_back(s);
+			}
+		}
+		std::sort(v.begin(), v.end());
+		std::snprintf(line, sizeof(line), "%s %zu %.3f\n", names[m], g_db.mode_rows[m].size(),
+				double(v.empty() ? 0.0f : v[v.size() / 2]));
+		out += line;
+	}
+	return text(out);
 }
 
 int main() {
@@ -116,7 +145,8 @@ int main() {
 	ADD_API_FUNCTION(mm_bake, "String", "", "Build the pose database and the k-d tree");
 	ADD_API_FUNCTION(mm_clips, "String", "", "name frames seconds speed per clip");
 	ADD_API_FUNCTION(mm_reset, "String", "float x, float z, float yaw, int clip", "Place the character, playing a clip");
-	ADD_API_FUNCTION(mm_step, "PackedFloat32Array", "float dt, float vx, float vz, float facing",
-			"One frame of the controller: clip, time, character, clip root, switched, cost, simulation");
+	ADD_API_FUNCTION(mm_step, "PackedFloat32Array", "float dt, float vx, float vz, float facing, int mode, int jump",
+			"One frame of the controller: clip, time, character, clip root, switched, cost, simulation, pose kind, jumping");
+	ADD_API_FUNCTION(mm_modes, "String", "", "Per mode: name, poses, median moving speed");
 	halt();
 }
