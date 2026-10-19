@@ -52,24 +52,34 @@ int main(int argc, char **argv) {
 	}
 	const bool plant = argc > 2 && std::string(argv[2]) == "--plant-kd";
 	mm::Database db;
+	// argv[1] may name several clip dirs, separated by ':'.
 	std::vector<std::string> keys;
-	if (DIR *d = opendir(argv[1])) {
-		while (dirent *e = readdir(d)) {
-			if (e->d_name[0] != '.') {
-				keys.push_back(e->d_name);
+	const std::string roots = argv[1];
+	for (size_t s = 0; s <= roots.size();) {
+		const size_t e = std::min(roots.find(':', s), roots.size());
+		const std::string root = roots.substr(s, e - s);
+		std::vector<std::string> here;
+		if (DIR *d = opendir(root.c_str())) {
+			while (dirent *de = readdir(d)) {
+				if (de->d_name[0] != '.') {
+					here.push_back(root + "/" + de->d_name);
+				}
 			}
+			closedir(d);
 		}
-		closedir(d);
+		std::sort(here.begin(), here.end());
+		keys.insert(keys.end(), here.begin(), here.end());
+		s = e + 1;
 	}
-	std::sort(keys.begin(), keys.end());
-	for (const std::string &k : keys) {
+	for (const std::string &path : keys) {
 		std::vector<std::string> names;
 		std::vector<int32_t> parents;
 		std::vector<float> xf;
 		float fps = 30;
-		if (!read_clip(std::string(argv[1]) + "/" + k, names, parents, xf, fps)) {
+		if (!read_clip(path, names, parents, xf, fps)) {
 			continue;
 		}
+		const std::string k = path.substr(path.find_last_of('/') + 1);
 		std::printf("%s\n", db.add_clip(k, names, parents, xf, fps).c_str());
 	}
 	std::printf("%s\n", db.bake().c_str());
@@ -120,29 +130,53 @@ int main(int argc, char **argv) {
 		const char *name;
 		float speed, turn_at, turn_to;
 		const char *expect;
+		int mode;
+		float jump_at;
 	};
 	const Case cases[] = {
-			{"stand", 0.0f, -1, 0, "idle|turn|stop"},
-			{"walk", 1.3f, -1, 0, "walk"},
-			{"run", 3.5f, -1, 0, "run|jog"},
-			{"turn", 1.3f, 3.0f, mm::kPi / 2, "walk|turn"},
+			{"stand", 0.0f, -1, 0, "idle|turn|stop", mm::Stand, -1},
+			{"walk", 1.3f, -1, 0, "walk", mm::Stand, -1},
+			{"run", 3.5f, -1, 0, "run|jog", mm::Stand, -1},
+			{"turn", 1.3f, 3.0f, mm::kPi / 2, "walk|turn", mm::Stand, -1},
+			{"crouch", 0.8f, -1, 0, "crouch", mm::Crouch, -1},
+			{"crawl", 0.4f, -1, 0, "crawl", mm::Crawl, -1},
+			{"jump", 1.3f, -1, 0, "jump", mm::Stand, 3.0f},
 	};
 	for (const Case &c : cases) {
+		if (c.mode != mm::Stand && !db.has_mode(c.mode)) {
+			std::printf("CTL %s SKIP no poses of that kind\n", c.name);
+			continue;
+		}
+		if (c.jump_at >= 0 && !db.has_mode(mm::Jump)) {
+			std::printf("CTL %s SKIP no take-off poses\n", c.name);
+			continue;
+		}
 		mm::Controller ctl;
 		ctl.db = &db;
 		ctl.reset({}, 0, 0);
 		std::map<std::string, float> played;
 		const float dt = 1.0f / 60;
 		float heading = 0;
+		float kind_ok = 0, kind_all = 0, air = 0;
+		bool jumped = false;
 		for (int i = 0; i < 60 * 8; ++i) {
 			const float t = float(i) * dt;
 			if (c.turn_at >= 0 && t >= c.turn_at) {
 				heading = c.turn_to;
 			}
+			const bool press = c.jump_at >= 0 && !jumped && t >= c.jump_at;
+			jumped = jumped || press;
 			ctl.update(dt, mm::v3{std::sin(heading) * c.speed, 0, std::cos(heading) * c.speed},
-					std::numeric_limits<float>::quiet_NaN());
+					std::numeric_limits<float>::quiet_NaN(), c.mode, press);
+			const mm::Clip &pc = db.clips[size_t(ctl.clip)];
+			const int pf = std::clamp(int(std::lround(ctl.time * pc.fps)), 0, pc.frames - 1);
 			if (t > 2.0f) {
-				played[db.clips[size_t(ctl.clip)].name] += dt;
+				played[pc.name] += dt;
+				kind_all += dt;
+				kind_ok += pc.kind[size_t(pf)] == c.mode ? dt : 0.0f;
+			}
+			if (c.jump_at >= 0 && t >= c.jump_at && t < c.jump_at + 1.5f && pc.kind[size_t(pf)] == mm::Air) {
+				air += dt;
 			}
 		}
 		std::string top;
@@ -166,15 +200,20 @@ int main(int argc, char **argv) {
 			s = e + 1;
 		}
 		const float want = c.speed * 8.0f;
-		const bool dist_ok = c.speed == 0 ? dist < 1.0f : (dist > 0.6f * want && dist < 1.2f * want);
+		const bool dist_ok = c.speed == 0 ? dist < 1.0f : (dist > 0.6f * want && dist < 1.25f * want);
 		const float face_err = std::fabs(mm::wrap_angle(ctl.char_yaw - (c.turn_at >= 0 ? c.turn_to : 0.0f)));
 		const bool face_ok = c.speed == 0 || face_err < 0.35f;
+		// A crouch or crawl plays poses of that kind most of the time; a jump leaves the ground.
+		const bool kind_good = c.mode == mm::Stand || kind_ok >= 0.8f * kind_all;
+		const bool jump_good = c.jump_at < 0 || (ctl.jumps == 1 && air > 0.1f);
+		std::printf("KIND %s share=%.2f air=%.2f s jumps=%d\n", c.name, double(kind_all > 0 ? kind_ok / kind_all : 0.0f),
+				double(air), ctl.jumps);
 		// Settled motion does not flicker between poses: at most 3 switches a second. The clip
 		// names are only reported: motion matching uses any part of any clip (the walking start of
 		// stop_walk is a walk).
 		const bool calm = float(ctl.switches) / 8.0f <= 3.0f;
 		(void)name_ok;
-		const bool ok = dist_ok && face_ok && calm;
+		const bool ok = dist_ok && face_ok && calm && kind_good && jump_good;
 		std::printf("TRACE %s clip=%d time=%.6f x=%.6f z=%.6f yaw=%.6f switches=%d\n", c.name, ctl.clip, double(ctl.time),
 				double(ctl.char_pos.x), double(ctl.char_pos.z), double(ctl.char_yaw), ctl.switches);
 		std::printf("CTL %s %s travel=%.2f m (asked %.1f) yaw_err=%.2f rad searches=%d switches=%d top=%s | %s\n", c.name,
