@@ -4,7 +4,8 @@
 // motion.elf's motion_result layout), and the host plays the same clips retargeted to its rig.
 //
 // Host side (entities-model-explorer vsk_model_explorer/core/MotionMatch.gd):
-//   mm_add_clip(name, names, parents, transforms, fps)  once per clip -> "ADDED <name> frames N"
+//   mm_add_clip(name, names, parents, transforms, fps, loop)  once per clip -> "ADDED <name> frames N";
+//                                                loop 1 for a steady gait cut as a loop (its loop.txt)
 //   mm_bake()                                    -> "BAKED clips C poses N dims D"
 //   mm_clips()                                   -> one line per clip: name frames seconds speed_m_s
 //                                                dx dz (root travel, first to last frame),
@@ -43,7 +44,7 @@ static Variant mm_clear() {
 	return text("CLEARED");
 }
 
-static Variant mm_add_clip(String name, String names, PackedArray<int32_t> parents, PackedArray<float> transforms, double fps) {
+static Variant mm_add_clip(String name, String names, PackedArray<int32_t> parents, PackedArray<float> transforms, double fps, int loop) {
 	std::vector<std::string> nm;
 	const std::string all = names.utf8();
 	for (size_t i = 0; i < all.size();) {
@@ -54,7 +55,7 @@ static Variant mm_add_clip(String name, String names, PackedArray<int32_t> paren
 		i = j + 1;
 	}
 	g_baked = false;
-	return text(g_db.add_clip(name.utf8(), nm, parents.fetch(), transforms.fetch(), float(fps)));
+	return text(g_db.add_clip(name.utf8(), nm, parents.fetch(), transforms.fetch(), float(fps), loop != 0));
 }
 
 static Variant mm_bake() {
@@ -140,7 +141,7 @@ static Variant mm_modes() {
 
 int main() {
 	ADD_API_FUNCTION(mm_clear, "String", "", "Forget every clip");
-	ADD_API_FUNCTION(mm_add_clip, "String", "String name, String names, PackedInt32Array parents, PackedFloat32Array transforms, float fps",
+	ADD_API_FUNCTION(mm_add_clip, "String", "String name, String names, PackedInt32Array parents, PackedFloat32Array transforms, float fps, int loop",
 			"A SOMA30 clip (motion.elf motion_result layout) for the pose database");
 	ADD_API_FUNCTION(mm_bake, "String", "", "Build the pose database and the k-d tree");
 	ADD_API_FUNCTION(mm_clips, "String", "", "name frames seconds speed per clip");

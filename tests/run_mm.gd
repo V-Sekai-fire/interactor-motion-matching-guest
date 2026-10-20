@@ -39,7 +39,8 @@ func _process(_d: float) -> bool:
 		for p in FileAccess.get_file_as_string(p_dir.path_join("parents.txt")).split("\n", false):
 			parents.append(int(p))
 		var xf := FileAccess.get_file_as_bytes(p_dir.path_join("transforms.f32")).to_float32_array()
-		print(sb.vmcall("mm_add_clip", k, "\n".join(names), parents, xf, fps))
+		var loop := 1 if FileAccess.file_exists(p_dir.path_join("loop.txt")) else 0
+		print(sb.vmcall("mm_add_clip", k, "\n".join(names), parents, xf, fps, loop))
 	print(sb.vmcall("mm_bake"))
 	# [name, speed, turn_at, turn_to, mode, jump_at] as in tests/mm_core_test.cpp
 	var cases := [
