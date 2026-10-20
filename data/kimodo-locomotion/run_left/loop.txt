@@ -1,0 +1,1 @@
+loop from 77 to 258 of 300 seam_deg 8.51223 ordinary_deg 13.6745
