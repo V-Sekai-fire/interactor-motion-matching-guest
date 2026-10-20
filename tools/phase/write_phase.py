@@ -2,7 +2,7 @@
 
   python write_phase.py <Manifold npz> <dataset dir with clips.tsv> [--shift 0.25]
 
-Per clip, phase.f32 holds the clip's own frames x 4 float32: manifold curve (codebook index), phase 0..1,
+Per clip, phase.f32 holds frames x 4 float32: manifold curve (codebook index), phase 0..1,
 amplitude (norm of the latent state), frequency (cycles a second). The gate: left-foot strikes
 (the foot comes to rest on the clip's ground, as mm_core.hpp's cycle_phase finds them) must fall
 at one learned phase per curve, within 0.06 of a cycle (circular spread). --shift moves every
@@ -50,14 +50,13 @@ def main():
     per_curve = {}
     write = shift == 0.0
     for line in open(os.path.join(ds, "clips.tsv")):
-        _, d, n, up = line.rstrip("\n").split("\t")
-        n, up = int(n), int(up)
-        # every up-th training frame is a frame of the clip
-        sl = slice(at, at + n, up)
+        _, d, n, fps = line.rstrip("\n").split("\t")
+        n, fps = int(n), float(fps)
+        sl = slice(at, at + n)
         at += n
         if write:
             np.stack([index[sl], phase[sl], amp[sl], freq[sl]], 1).astype(np.float32).tofile(os.path.join(d, "phase.f32"))
-        for f in strikes(d, 30.0):
+        for f in strikes(d, fps):
             per_curve.setdefault(int(index[sl][f]), []).append((phase[sl][f] + shift * (f % 2)) % 1.0)
     assert at == len(phase), (at, len(phase))
     worst = 0.0

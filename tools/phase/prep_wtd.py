@@ -2,8 +2,8 @@
 
   python prep_wtd.py <clip set dir>[:<dir>...] <out dir> [--fps 60]
 
-Clips at a lower rate are resampled to --fps (default 60) by linear interpolation of the
-features, so frame k of a 30 fps clip is frame 2k of its sequence.
+Only clips recorded at --fps (default 60, the O3DE motion capture) are written: no frame is
+made up by resampling, so the 30 fps Kimodo clips are left out and keep foot-strike phase.
 
 Channels per frame: Velocities (30 joints x 3, m/s), Positions (30 x 3, m), Rotations (30 x 6,
 the first two columns of each joint's rotation). The root is the hips on the floor facing the
@@ -67,18 +67,15 @@ def main():
             if not os.path.isfile(os.path.join(d, "transforms.f32")):
                 continue
             x, parents, fps = clip(d)
+            if abs(fps - fps_out) > 1e-3:
+                print("WTD-SKIP %s at %g fps" % (k, fps))
+                continue
             f, J = features(x, parents, fps)
             fps_all.add(fps)
-            up = int(round(fps_out / fps))
-            assert up >= 1 and abs(up * fps - fps_out) < 1e-3, (fps, fps_out)
-            if up > 1:
-                n = (len(f) - 1) * up + 1
-                at = np.arange(n) / up
-                f = np.stack([np.interp(at, np.arange(len(f)), f[:, c]) for c in range(f.shape[1])], 1).astype(np.float32)
 
             rows.append(f)
             seq += [len(listing) + 1] * len(f)
-            listing.append((len(listing) + 1, d, len(f), up))
+            listing.append((len(listing) + 1, d, len(f), fps))
     assert len(fps_all) == 1, fps_all
     data = np.concatenate(rows)
     data.tofile(os.path.join(out, "Data.bin"))
@@ -87,8 +84,8 @@ def main():
     with open(os.path.join(out, "Description.txt"), "w") as fh:
         fh.write("Velocities,Positions,Rotations\n%d,%d,%d\n%d\n0\n0\n%d\n" % (J * 3, J * 3, J * 6, len(data), int(fps_out)))
     with open(os.path.join(out, "clips.tsv"), "w") as fh:
-        for i, d, n, up in listing:
-            fh.write("%d\t%s\t%d\t%d\n" % (i, d, n, up))
+        for i, d, n, fps in listing:
+            fh.write("%d\t%s\t%d\t%g\n" % (i, d, n, fps))
     print("WTD-DATA frames=%d dims=%d clips=%d fps=%g" % (data.shape[0], data.shape[1], len(listing), fps_out))
 
 

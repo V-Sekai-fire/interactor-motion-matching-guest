@@ -27,6 +27,10 @@ jobs:
             echo "joins out of phase passed: the check cannot fail" >&2
             exit 1
           fi
+          if ./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-rate; then
+            echo "clips read at the wrong frame rate passed: the check cannot fail" >&2
+            exit 1
+          fi
       - name: The steady gaits' loop seams, and the uncut control
         run: |
           g++ -std=c++20 -O2 -ffp-contract=off -Wall -Wextra -Isrc tools/make_loops.cpp -o make_loops

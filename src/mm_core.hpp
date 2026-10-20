@@ -203,6 +203,7 @@ struct Settings {
 	float sync_halflife = 0.2f;    // the character is pulled toward the simulation
 	float sync_clamp = 0.15f;      // and kept at most this far from it (metres)
 	float facing_smooth = 0.25f;   // seconds either side for the root facing
+	float vel_dt = 1.0f / 30;      // seconds either side for a bone velocity (one 30 fps frame)
 	float end_margin = 1.0f;       // poses this close to a clip's end are never matched (a match plays at least this long)
 	float crouch_head = 0.82f;     // a head below this share of a standing head is crouching
 	float crawl_head = 0.45f;      // and below this, crawling
@@ -275,7 +276,12 @@ public:
 			}
 			c.head_y.push_back(gp[head].y);
 		}
-		const int half = std::max(0, int(std::lround(settings.facing_smooth * fps)));
+		// The facing is averaged over facing_smooth seconds each side, whatever the clip's rate:
+		// whole frames inside the window, and the frame just past each edge by the part of it
+		// that falls inside, so 30 and 60 fps clips average the same span.
+		const float hw = std::max(0.0f, settings.facing_smooth * fps);
+		const int half = int(std::floor(hw)) + 1;
+		const float edge = hw - std::floor(hw);
 		const int L = c.frames - 1;
 		if (c.loop) {
 			c.loop_yaw = wrap_angle(std::atan2(fwd[size_t(L)].x, fwd[size_t(L)].z) - std::atan2(fwd[0].x, fwd[0].z));
@@ -283,12 +289,13 @@ public:
 		for (int f = 0; f < c.frames; ++f) {
 			v3 s;
 			for (int k = f - half; k <= f + half; ++k) {
+				const float w8 = std::abs(k - f) == half ? edge : 1.0f;
 				// A loop's window runs on into the next pass (or back into the last), turned with it.
 				if (c.loop && (k < 0 || k > L)) {
 					const v3 w = k > L ? fwd[size_t(k - L)] : fwd[size_t(k + L)];
-					s = s + rotate_y(v3{w.x, 0, w.z}, k > L ? c.loop_yaw : -c.loop_yaw);
+					s = s + rotate_y(v3{w.x, 0, w.z}, k > L ? c.loop_yaw : -c.loop_yaw) * w8;
 				} else if (k >= 0 && k <= L) {
-					s = s + v3{fwd[size_t(k)].x, 0, fwd[size_t(k)].z};
+					s = s + v3{fwd[size_t(k)].x, 0, fwd[size_t(k)].z} * w8;
 				}
 			}
 			c.yaw.push_back(std::atan2(s.x, s.z));
@@ -490,8 +497,7 @@ public:
 		bool was = true;
 		for (int i = 0; i < n; ++i) {
 			const int f = c.loop && i >= F ? i - (F - 1) : i;
-			const int g = std::min(f + 1, F - 1), h = std::max(g - 1, 0);
-			const v3 v = (at(g) - at(h)) * c.fps;
+			const v3 v = bone_velocity(c, 0, f);
 			const bool planted = at(f).y <= ground + settings.strike_feet &&
 					std::sqrt(v.x * v.x + v.z * v.z) < settings.strike_speed;
 			if (planted && !was) {
@@ -614,15 +620,30 @@ public:
 			out.push_back(l.y);
 			out.push_back(l.z);
 		}
-		const int g = f + 1 < c.frames ? f + 1 : f;
-		const int h = g - 1 >= 0 ? g - 1 : 0;
 		for (size_t b = 0; b < B; ++b) {
-			const v3 v = (c.bones[size_t(g) * B + b] - c.bones[size_t(h) * B + b]) * (g == h ? 0.0f : c.fps);
-			const v3 l = rotate_y(v, -yaw);
+			const v3 l = rotate_y(bone_velocity(c, b, f), -yaw);
 			out.push_back(l.x);
 			out.push_back(l.y);
 			out.push_back(l.z);
 		}
+	}
+
+	// A bone's velocity at frame f: the central difference over vel_dt seconds each side, read
+	// between frames, so it measures the same span at any frame rate (clamped at the clip ends).
+	v3 bone_velocity(const Clip &c, size_t b, int f) const {
+		const size_t B = bone_names.size();
+		const float last = float(c.frames - 1) / c.fps, t = float(f) / c.fps;
+		const float t0 = std::max(0.0f, t - settings.vel_dt), t1 = std::min(last, t + settings.vel_dt);
+		if (t1 <= t0) {
+			return {};
+		}
+		auto at = [&](float u) {
+			const float x = std::clamp(u * c.fps, 0.0f, float(c.frames - 1));
+			const int a = int(x), n = std::min(a + 1, c.frames - 1);
+			const float w = x - float(a);
+			return c.bones[size_t(a) * B + b] * (1 - w) + c.bones[size_t(n) * B + b] * w;
+		};
+		return (at(t1) - at(t0)) * (1 / (t1 - t0));
 	}
 
 	static v3 sample_root(const Clip &c, float t) {
