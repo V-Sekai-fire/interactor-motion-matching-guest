@@ -1,6 +1,9 @@
 """Our motion set as a WalkTheDog dataset: one sequence per clip, in the root's floor frame.
 
-  python prep_wtd.py <clip set dir>[:<dir>...] <out dir>
+  python prep_wtd.py <clip set dir>[:<dir>...] <out dir> [--fps 60]
+
+Clips at a lower rate are resampled to --fps (default 60) by linear interpolation of the
+features, so frame k of a 30 fps clip is frame 2k of its sequence.
 
 Channels per frame: Velocities (30 joints x 3, m/s), Positions (30 x 3, m), Rotations (30 x 6,
 the first two columns of each joint's rotation). The root is the hips on the floor facing the
@@ -53,6 +56,7 @@ def features(x, parents, fps):
 
 def main():
     roots, out = sys.argv[1].split(":"), sys.argv[2]
+    fps_out = float(sys.argv[sys.argv.index("--fps") + 1]) if "--fps" in sys.argv else 60.0
     os.makedirs(out, exist_ok=True)
     rows, seq, listing = [], [], []
     J = 0
@@ -65,20 +69,27 @@ def main():
             x, parents, fps = clip(d)
             f, J = features(x, parents, fps)
             fps_all.add(fps)
+            up = int(round(fps_out / fps))
+            assert up >= 1 and abs(up * fps - fps_out) < 1e-3, (fps, fps_out)
+            if up > 1:
+                n = (len(f) - 1) * up + 1
+                at = np.arange(n) / up
+                f = np.stack([np.interp(at, np.arange(len(f)), f[:, c]) for c in range(f.shape[1])], 1).astype(np.float32)
+
             rows.append(f)
             seq += [len(listing) + 1] * len(f)
-            listing.append((len(listing) + 1, d, len(f)))
+            listing.append((len(listing) + 1, d, len(f), up))
     assert len(fps_all) == 1, fps_all
     data = np.concatenate(rows)
     data.tofile(os.path.join(out, "Data.bin"))
     with open(os.path.join(out, "Sequences.txt"), "w") as fh:
         fh.write("\n".join(str(s) for s in seq) + "\n")
     with open(os.path.join(out, "Description.txt"), "w") as fh:
-        fh.write("Velocities,Positions,Rotations\n%d,%d,%d\n%d\n0\n0\n%d\n" % (J * 3, J * 3, J * 6, len(data), int(fps_all.pop())))
+        fh.write("Velocities,Positions,Rotations\n%d,%d,%d\n%d\n0\n0\n%d\n" % (J * 3, J * 3, J * 6, len(data), int(fps_out)))
     with open(os.path.join(out, "clips.tsv"), "w") as fh:
-        for i, d, n in listing:
-            fh.write("%d\t%s\t%d\n" % (i, d, n))
-    print("WTD-DATA frames=%d dims=%d clips=%d" % (data.shape[0], data.shape[1], len(listing)))
+        for i, d, n, up in listing:
+            fh.write("%d\t%s\t%d\t%d\n" % (i, d, n, up))
+    print("WTD-DATA frames=%d dims=%d clips=%d fps=%g" % (data.shape[0], data.shape[1], len(listing), fps_out))
 
 
 main()
