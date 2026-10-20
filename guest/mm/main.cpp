@@ -6,6 +6,8 @@
 // Host side (entities-model-explorer vsk_model_explorer/core/MotionMatch.gd):
 //   mm_add_clip(name, names, parents, transforms, fps, loop)  once per clip -> "ADDED <name> frames N";
 //                                                loop 1 for a steady gait cut as a loop (its loop.txt)
+//   mm_clip_phase(clip, rows)                    optional, after mm_add_clip: the clip's learned
+//                                                phase (phase.f32), frames x 4 floats
 //   mm_bake()                                    -> "BAKED clips C poses N dims D"
 //   mm_clips()                                   -> one line per clip: name frames seconds speed_m_s
 //                                                dx dz (root travel, first to last frame),
@@ -56,6 +58,11 @@ static Variant mm_add_clip(String name, String names, PackedArray<int32_t> paren
 	}
 	g_baked = false;
 	return text(g_db.add_clip(name.utf8(), nm, parents.fetch(), transforms.fetch(), float(fps), loop != 0));
+}
+
+static Variant mm_clip_phase(int clip, PackedArray<float> rows) {
+	g_baked = false;
+	return text(g_db.set_phase(clip, rows.fetch()));
 }
 
 static Variant mm_bake() {
@@ -143,6 +150,8 @@ int main() {
 	ADD_API_FUNCTION(mm_clear, "String", "", "Forget every clip");
 	ADD_API_FUNCTION(mm_add_clip, "String", "String name, String names, PackedInt32Array parents, PackedFloat32Array transforms, float fps, int loop",
 			"A SOMA30 clip (motion.elf motion_result layout) for the pose database");
+	ADD_API_FUNCTION(mm_clip_phase, "String", "int clip, PackedFloat32Array rows",
+			"A clip's learned phase: frames x 4 (curve, phase, amplitude, frequency)");
 	ADD_API_FUNCTION(mm_bake, "String", "", "Build the pose database and the k-d tree");
 	ADD_API_FUNCTION(mm_clips, "String", "", "name frames seconds speed per clip");
 	ADD_API_FUNCTION(mm_reset, "String", "float x, float z, float yaw, int clip", "Place the character, playing a clip");

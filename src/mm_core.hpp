@@ -170,6 +170,11 @@ struct Clip {
 	// Per frame, from bake(): where the pose is in its gait cycle, 0 to 1 from one left-foot
 	// strike to the next, or -1 outside a cycle (standing, a turn on the spot, a jump).
 	std::vector<float> phase;
+	// A learned phase (WalkTheDog's periodic autoencoder), when the host gives one: per frame the
+	// manifold curve and the phase on it. It replaces the foot strikes; phases compare only on
+	// one curve.
+	std::vector<float> learned_phase;
+	std::vector<int> curve;
 	// A loop (a steady gait cut to whole strides): its last frame is its first moved on by one
 	// pass, a turn of loop_yaw about the first root and a shift onto the last.
 	bool loop = false;
@@ -465,7 +470,12 @@ public:
 				}
 				a = b + 1;
 			}
-			cycle_phase(c, ground);
+			if (c.learned_phase.size() == size_t(c.frames)) {
+				c.phase = c.learned_phase;
+			} else {
+				c.curve.assign(size_t(c.frames), -1);
+				cycle_phase(c, ground);
+			}
 		}
 	}
 
@@ -513,6 +523,20 @@ public:
 				c.phase[size_t(f)] = -1;
 			}
 		}
+	}
+	// The learned phase of a clip: frames x 4 (curve, phase, amplitude, frequency).
+	std::string set_phase(int ci, const std::vector<float> &rows) {
+		if (ci < 0 || ci >= int(clips.size()) || rows.size() != size_t(clips[size_t(ci)].frames) * 4) {
+			return "FAIL phase rows " + std::to_string(rows.size());
+		}
+		Clip &c = clips[size_t(ci)];
+		c.learned_phase.resize(size_t(c.frames));
+		c.curve.resize(size_t(c.frames));
+		for (int f = 0; f < c.frames; ++f) {
+			c.curve[size_t(f)] = int(rows[size_t(f) * 4]);
+			c.learned_phase[size_t(f)] = rows[size_t(f) * 4 + 1];
+		}
+		return "PHASE " + c.name + " frames " + std::to_string(c.frames);
 	}
 	// How far apart two phases are around the cycle (0 to 0.5); 0 when either is outside one.
 	static float phase_gap(float a, float b) {
@@ -899,9 +923,14 @@ struct Controller {
 		// phase.
 		const float now_phase = c.phase[size_t(now_f)];
 		const float tol = db->settings.phase_tol;
+		const int now_curve = c.curve[size_t(now_f)];
 		auto out_of_phase = [&](int ci, float t) {
 			const Clip &k = db->clips[size_t(ci)];
 			const int f = std::clamp(int(std::lround(t * k.fps)), 0, k.frames - 1);
+			// Learned phases line up only on one manifold curve; foot-strike phases (curve -1) always do.
+			if (k.curve[size_t(f)] != now_curve) {
+				return false;
+			}
 			return tol > 0 && Database::phase_gap(now_phase, k.phase[size_t(f)]) > tol;
 		};
 		if (out_of_phase(bc, bt)) {
