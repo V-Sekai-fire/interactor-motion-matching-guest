@@ -167,6 +167,11 @@ struct Clip {
 	// the jump lands.
 	std::vector<uint8_t> kind;
 	std::vector<int> lands;
+	// A loop (a steady gait cut to whole strides): its last frame is its first moved on by one
+	// pass, a turn of loop_yaw about the first root and a shift onto the last.
+	bool loop = false;
+	float loop_yaw = 0;
+	float len_s() const { return float(frames - 1) / fps; }
 };
 
 // What the controller asks for. A pose's kind comes from its shape: the head's height against a
@@ -197,6 +202,8 @@ struct Settings {
 	float takeoff_from = 0.45f, takeoff_to = 0.1f; // take-off poses: this long before the feet leave
 	float min_air = 0.15f;         // a shorter flight is a step, not a jump
 	float min_run = 0.75f;         // a stand, crouch or crawl shorter than this is Between
+	bool never_back = true;        // a search never picks a pose played in the last `recent` seconds
+	float recent = 2.0f;
 };
 
 class Database {
@@ -208,7 +215,7 @@ public:
 	// A SOMA30 clip in motion.elf's layout: per frame, per joint, the parent-local row-major 3x3
 	// then the translation (the root's is its position, the others their rest offset).
 	std::string add_clip(const std::string &name, const std::vector<std::string> &names, const std::vector<int32_t> &parents,
-			const std::vector<float> &xf, float fps) {
+			const std::vector<float> &xf, float fps, bool loop = false) {
 		const size_t J = names.size();
 		if (J == 0 || parents.size() != J || xf.size() % (J * 12) != 0) {
 			return "FAIL joints " + std::to_string(J) + " parents " + std::to_string(parents.size()) + " floats " +
@@ -232,6 +239,7 @@ public:
 		c.name = name;
 		c.fps = fps;
 		c.frames = int(xf.size() / (J * 12));
+		c.loop = loop && c.frames > 1;
 		std::vector<m3> gr(J);
 		std::vector<v3> gp(J);
 		std::vector<v3> fwd(size_t(c.frames));
@@ -258,10 +266,20 @@ public:
 			c.head_y.push_back(gp[head].y);
 		}
 		const int half = std::max(0, int(std::lround(settings.facing_smooth * fps)));
+		const int L = c.frames - 1;
+		if (c.loop) {
+			c.loop_yaw = wrap_angle(std::atan2(fwd[size_t(L)].x, fwd[size_t(L)].z) - std::atan2(fwd[0].x, fwd[0].z));
+		}
 		for (int f = 0; f < c.frames; ++f) {
 			v3 s;
-			for (int k = std::max(0, f - half); k <= std::min(c.frames - 1, f + half); ++k) {
-				s = s + v3{fwd[size_t(k)].x, 0, fwd[size_t(k)].z};
+			for (int k = f - half; k <= f + half; ++k) {
+				// A loop's window runs on into the next pass (or back into the last), turned with it.
+				if (c.loop && (k < 0 || k > L)) {
+					const v3 w = k > L ? fwd[size_t(k - L)] : fwd[size_t(k + L)];
+					s = s + rotate_y(v3{w.x, 0, w.z}, k > L ? c.loop_yaw : -c.loop_yaw);
+				} else if (k >= 0 && k <= L) {
+					s = s + v3{fwd[size_t(k)].x, 0, fwd[size_t(k)].z};
+				}
 			}
 			c.yaw.push_back(std::atan2(s.x, s.z));
 		}
@@ -318,7 +336,7 @@ public:
 		eligible.clear();
 		for (int i = 0; i < N; ++i) {
 			const Clip &c = clips[size_t(pose_clip[size_t(i)])];
-			if (float(c.frames - 1 - pose_frame[size_t(i)]) / c.fps >= settings.end_margin) {
+			if (c.loop || float(c.frames - 1 - pose_frame[size_t(i)]) / c.fps >= settings.end_margin) {
 				eligible.push_back(i);
 			}
 		}
@@ -342,7 +360,7 @@ public:
 				const int ci = pose_clip[size_t(i)];
 				const Clip &c = clips[size_t(ci)];
 				const int f = pose_frame[size_t(i)];
-				const bool room = float(run_end[size_t(ci)][size_t(f)] - f) / c.fps >= settings.end_margin;
+				const bool room = c.loop || float(run_end[size_t(ci)][size_t(f)] - f) / c.fps >= settings.end_margin;
 				const bool in = m == Jump ? c.lands[size_t(f)] >= 0 : (c.kind[size_t(f)] == m && room);
 				if (in) {
 					mode_rows[m].push_back(i);
@@ -481,8 +499,8 @@ public:
 		auto point = [&](float t) {
 			const float len_s = float(c.frames - 1) / c.fps;
 			const float ct = std::clamp(t, 0.0f, len_s);
-			v3 p = sample_root(c, ct);
-			if (t > len_s || t < 0) {
+			v3 p = c.loop ? root_at(c, t) : sample_root(c, ct);
+			if (!c.loop && (t > len_s || t < 0)) {
 				const float e = 0.1f;
 				const v3 vel = t > len_s ? (sample_root(c, len_s) - sample_root(c, len_s - e)) * (1 / e)
 										 : (sample_root(c, 0) - sample_root(c, e)) * (1 / e);
@@ -491,7 +509,7 @@ public:
 			const v3 l = to_local(p, origin, yaw);
 			out.push_back(l.x);
 			out.push_back(l.z);
-			out.push_back(wrap_angle(sample_yaw(c, ct) - yaw));
+			out.push_back(wrap_angle((c.loop ? yaw_at(c, t) : sample_yaw(c, ct)) - yaw));
 		};
 		const float t0 = float(f) / c.fps;
 		for (int i = 1; i <= settings.future; ++i) {
@@ -536,6 +554,57 @@ public:
 		const int b = std::min(a + 1, c.frames - 1);
 		const float u = x - float(a);
 		return c.yaw[size_t(a)] + wrap_angle(c.yaw[size_t(b)] - c.yaw[size_t(a)]) * u;
+	}
+
+	// A loop's root and facing at any time: passes before or after this one are moved by the
+	// loop's turn and shift. Other clips hold still past their ends.
+	static int passes(const Clip &c, float t, float &in_pass) {
+		const float L = c.len_s();
+		const int n = int(std::floor(t / L));
+		in_pass = std::clamp(t - float(n) * L, 0.0f, L);
+		return n;
+	}
+	static v3 root_at(const Clip &c, float t) {
+		if (!c.loop) {
+			return sample_root(c, t);
+		}
+		float u = 0;
+		int n = passes(c, t, u);
+		v3 p = sample_root(c, u);
+		const v3 a = c.root.front(), b = c.root.back();
+		for (; n > 0; --n) {
+			p = b + rotate_y(p - a, c.loop_yaw);
+		}
+		for (; n < 0; ++n) {
+			p = a + rotate_y(p - b, -c.loop_yaw);
+		}
+		return p;
+	}
+	static float yaw_at(const Clip &c, float t) {
+		if (!c.loop) {
+			return sample_yaw(c, t);
+		}
+		float u = 0;
+		const int n = passes(c, t, u);
+		return wrap_angle(sample_yaw(c, u) + float(n) * c.loop_yaw);
+	}
+	// The best pose of a mode that `skip` does not refuse, by a full scan.
+	template <typename Skip>
+	int search_mode_except(int mode, const float *q, Skip skip) const {
+		const int m = has_mode(mode) ? mode : int(Stand);
+		int best = -1;
+		float bc = std::numeric_limits<float>::max();
+		for (int i : mode_rows[m]) {
+			if (skip(pose_clip[size_t(i)], float(pose_frame[size_t(i)]) / clips[size_t(pose_clip[size_t(i)])].fps)) {
+				continue;
+			}
+			const float c = cost(i, q);
+			if (c < bc) {
+				bc = c;
+				best = i;
+			}
+		}
+		return best;
 	}
 
 	float cost(int pose, const float *q) const {
@@ -588,7 +657,7 @@ struct Controller {
 	float time = 0;
 	float since_search = 1e9f;
 	float last_cost = 0;
-	int searches = 0, switches = 0;
+	int searches = 0, switches = 0, wraps = 0;
 	// MMCharacter::_update_history: (clock, position, facing) of the simulation.
 	struct Past {
 		float t;
@@ -596,6 +665,34 @@ struct Controller {
 		float yaw;
 	};
 	std::vector<Past> history;
+	// What played lately: a clip from t0 to t1, until `clock` reached `at`.
+	struct Span {
+		int clip;
+		float t0, t1, at;
+	};
+	std::vector<Span> played;
+	void note_play() {
+		if (played.empty() || played.back().clip != clip || time < played.back().t1 || time > played.back().t1 + 0.1f) {
+			played.push_back({clip, time, time, clock});
+		}
+		played.back().t1 = time;
+		played.back().at = clock;
+		size_t drop = 0;
+		while (drop < played.size() && played[drop].at < clock - db->settings.recent) {
+			++drop;
+		}
+		played.erase(played.begin(), played.begin() + long(drop));
+	}
+	// A pose this controller played in the last `recent` seconds (the span now playing included,
+	// up to the frame now playing).
+	bool played_lately(int c, float t) const {
+		for (const Span &p : played) {
+			if (p.clip == c && t >= p.t0 - db->settings.same_clip_window && t <= p.t1) {
+				return true;
+			}
+		}
+		return false;
+	}
 	float clock = 0;
 	int mode = Stand;          // the kind of pose asked for (Stand, Crouch or Crawl)
 	float locked_until = -1;   // a jump plays through to here in its clip before searching again
@@ -609,6 +706,7 @@ struct Controller {
 		time = 0;
 		since_search = 1e9f;
 		history.clear();
+		played.clear();
 		clock = 0;
 		mode = Stand;
 		locked_until = -1;
@@ -636,14 +734,20 @@ struct Controller {
 		}
 		history.erase(history.begin(), history.begin() + long(drop));
 		// Play on: root motion of the current clip moves the character.
+		// A loop plays on through its end into its next pass, carrying the root with it.
 		const Clip &c0 = db->clips[size_t(clip)];
 		const float len_s = float(c0.frames - 1) / c0.fps;
-		const float t1 = std::min(time + dt, len_s);
-		const v3 d_local = to_local(Database::sample_root(c0, t1), Database::sample_root(c0, time), Database::sample_yaw(c0, time));
-		const float d_yaw = wrap_angle(Database::sample_yaw(c0, t1) - Database::sample_yaw(c0, time));
+		const float t1 = c0.loop ? time + dt : std::min(time + dt, len_s);
+		const v3 d_local = to_local(Database::root_at(c0, t1), Database::root_at(c0, time), Database::yaw_at(c0, time));
+		const float d_yaw = wrap_angle(Database::yaw_at(c0, t1) - Database::yaw_at(c0, time));
 		char_pos = char_pos + rotate_y(v3{d_local.x, 0, d_local.z}, char_yaw);
 		char_yaw = wrap_angle(char_yaw + d_yaw);
 		time = t1;
+		if (c0.loop && time >= len_s) {
+			time -= len_s;
+			++wraps;
+		}
+		note_play();
 		// Pull the character toward the simulation, never farther than the clamp.
 		const float k = damp_factor(s.sync_halflife, dt);
 		char_pos = char_pos + (sim_pos - char_pos) * k;
@@ -655,11 +759,12 @@ struct Controller {
 		// Search every search_every seconds, or when the clip ran out; never inside a jump.
 		since_search += dt;
 		bool switched = false;
-		const bool locked = locked_until >= 0 && time < locked_until && time < len_s - 1e-4f;
+		const bool ran_out = !c0.loop && time >= len_s - 1e-4f;
+		const bool locked = locked_until >= 0 && time < locked_until && !ran_out;
 		if (!locked) {
 			locked_until = -1;
 		}
-		if (!locked && (since_search >= s.search_every || time >= len_s - 1e-4f)) {
+		if (!locked && (since_search >= s.search_every || ran_out)) {
 			since_search = 0;
 			switched = search();
 		}
@@ -740,7 +845,7 @@ struct Controller {
 
 	bool search() {
 		const std::vector<float> q = query();
-		const int best = db->search_mode(mode, q.data());
+		int best = db->search_mode(mode, q.data());
 		++searches;
 		if (best < 0) {
 			return false;
@@ -753,15 +858,28 @@ struct Controller {
 		}
 		now_pose += now_f;
 		const float now_cost = db->cost(now_pose, q.data());
-		const float best_cost = db->cost(best, q.data());
-		last_cost = best_cost;
-		const int bc = db->pose_clip[size_t(best)];
-		const float bt = float(db->pose_frame[size_t(best)]) / db->clips[size_t(bc)].fps;
-		const bool near_now = bc == clip && std::fabs(bt - time) < db->settings.same_clip_window;
-		const bool at_end = time >= float(c.frames - 1) / c.fps - 1e-4f;
+		const bool at_end = !c.loop && time >= float(c.frames - 1) / c.fps - 1e-4f;
 		// A pose of another kind than asked (standing while crouch is asked) always gives way.
 		const int want = db->has_mode(mode) ? mode : int(Stand);
 		const bool wrong_kind = c.kind[size_t(now_f)] != want;
+		int bc = db->pose_clip[size_t(best)];
+		float bt = float(db->pose_frame[size_t(best)]) / db->clips[size_t(bc)].fps;
+		// Never back to a pose played lately: play on, or, when the clip must change, take the best
+		// pose not played lately. A loop reaches its start only by wrapping.
+		if (db->settings.never_back && played_lately(bc, bt)) {
+			if (!at_end && !wrong_kind) {
+				return false;
+			}
+			best = db->search_mode_except(mode, q.data(), [&](int c, float t) { return played_lately(c, t); });
+			if (best < 0) {
+				return false;
+			}
+			bc = db->pose_clip[size_t(best)];
+			bt = float(db->pose_frame[size_t(best)]) / db->clips[size_t(bc)].fps;
+		}
+		const float best_cost = db->cost(best, q.data());
+		last_cost = best_cost;
+		const bool near_now = bc == clip && std::fabs(bt - time) < db->settings.same_clip_window;
 		if (near_now && !at_end && !wrong_kind) {
 			return false;
 		}
