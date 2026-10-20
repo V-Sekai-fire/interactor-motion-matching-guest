@@ -1,6 +1,6 @@
 model kimodo_soma
 prompt A person sidesteps to the right while facing forward.
-frames 189 fps 30.0 joints 30 steps 50 seed 1171
+frames 111 fps 30.0 joints 30 steps 50 seed 1171
 Hips
 Spine1
 Spine2

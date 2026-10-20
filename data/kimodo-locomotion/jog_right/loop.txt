@@ -1,1 +1,1 @@
-loop from 30 to 189 of 300 seam_deg 6.88051 ordinary_deg 16.4202
+loop from 12 to 246 of 300 seam_deg 9.86426 ordinary_deg 16.4202

@@ -279,40 +279,40 @@ inline Frames faded(const Frames &c, int from, int to, int fade) {
 	return o;
 }
 
-inline LoopCut cut_loop(const std::vector<float> &xf, const std::vector<int32_t> &parents, float fps, float fade_s = 0.2f,
-		float smooth_s = 0.25f, size_t tries = 512) {
+// The loop runs from one left-foot strike to a later one at least two gait cycles on, every frame
+// between inside a cycle (`phase` >= 0, from Database::cycle_phase), so it is whole strides of
+// the clip's gait and never a stretch of standing. Of those runs, the smallest seam wins.
+inline LoopCut cut_loop(const std::vector<float> &xf, const std::vector<int32_t> &parents, float fps,
+		const std::vector<float> &phase, float fade_s = 0.2f) {
 	LoopCut out;
 	const Frames c = frames_of(xf, parents);
-	const int half = std::max(0, int(std::lround(smooth_s * fps)));
 	const int fade = std::max(1, int(std::lround(fade_s * fps)));
-	const std::vector<std::vector<float>> feat = keypoint_features(c, parents, fps, half);
-	struct Pair {
-		float cost;
-		int a, b;
-	};
-	std::vector<Pair> pairs;
-	for (int a = fade; a < c.F; ++a) {
-		for (int b = a + c.F / 2; b < c.F; ++b) {
-			float s = 0;
-			for (size_t d = 0; d < feat[size_t(a)].size(); ++d) {
-				const float e = feat[size_t(a)][d] - feat[size_t(b)][d];
-				s += e * e;
-			}
-			pairs.push_back({s, a, b});
+	std::vector<int> strikes;
+	for (int f = 0; f < c.F; ++f) {
+		if (phase[size_t(f)] == 0.0f) {
+			strikes.push_back(f);
 		}
 	}
-	std::sort(pairs.begin(), pairs.end(), [](const Pair &p, const Pair &q) { return p.cost < q.cost; });
 	out.ordinary_deg = ordinary_step(c);
 	out.seam_deg = std::numeric_limits<float>::max();
-	for (size_t i = 0; i < std::min(tries, pairs.size()); ++i) {
-		Frames o = faded(c, pairs[i].a, pairs[i].b, fade);
-		const float seam = seam_step(o, fade);
-		if (seam < out.seam_deg) {
-			out.seam_deg = seam;
-			out.from = pairs[i].a;
-			out.to = pairs[i].b;
-			out.cost = pairs[i].cost;
-			out.out = std::move(o);
+	for (size_t i = 0; i < strikes.size(); ++i) {
+		for (size_t j = i + 2; j < strikes.size(); ++j) {
+			const int a = strikes[i], b = strikes[j];
+			bool cycling = a >= fade;
+			for (int f = a; f < b && cycling; ++f) {
+				cycling = phase[size_t(f)] >= 0;
+			}
+			if (!cycling) {
+				break;
+			}
+			Frames o = faded(c, a, b, fade);
+			const float seam = seam_step(o, fade);
+			if (seam < out.seam_deg - 1e-4f || (seam < out.seam_deg + 1e-4f && b - a > out.to - out.from)) {
+				out.seam_deg = seam;
+				out.from = a;
+				out.to = b;
+				out.out = std::move(o);
+			}
 		}
 	}
 	return out;

@@ -1,1 +1,1 @@
-loop from 91 to 283 of 300 seam_deg 5.20527 ordinary_deg 10.3478
+loop from 113 to 197 of 300 seam_deg 5.113 ordinary_deg 10.3478

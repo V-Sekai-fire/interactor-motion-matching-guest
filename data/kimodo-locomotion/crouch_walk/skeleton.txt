@@ -1,6 +1,6 @@
 model kimodo_soma
 prompt A person walks forward slowly while crouching low.
-frames 158 fps 30.0 joints 30 steps 50 seed 1171
+frames 122 fps 30.0 joints 30 steps 50 seed 1171
 Hips
 Spine1
 Spine2

@@ -167,6 +167,9 @@ struct Clip {
 	// the jump lands.
 	std::vector<uint8_t> kind;
 	std::vector<int> lands;
+	// Per frame, from bake(): where the pose is in its gait cycle, 0 to 1 from one left-foot
+	// strike to the next, or -1 outside a cycle (standing, a turn on the spot, a jump).
+	std::vector<float> phase;
 	// A loop (a steady gait cut to whole strides): its last frame is its first moved on by one
 	// pass, a turn of loop_yaw about the first root and a shift onto the last.
 	bool loop = false;
@@ -202,8 +205,10 @@ struct Settings {
 	float takeoff_from = 0.45f, takeoff_to = 0.1f; // take-off poses: this long before the feet leave
 	float min_air = 0.15f;         // a shorter flight is a step, not a jump
 	float min_run = 0.75f;         // a stand, crouch or crawl shorter than this is Between
-	bool never_back = true;        // a search never picks a pose played in the last `recent` seconds
-	float recent = 2.0f;
+	float phase_tol = 0.06f;       // a switch between two cycling poses keeps the phase this close (0: off)
+	float strike_feet = 0.05f;     // a foot this near the clip's ground, and
+	float strike_speed = 0.5f;     // this slow on the floor (m/s), is planted
+	float min_cycle = 0.4f, max_cycle = 2.0f; // a gait cycle lasts this long
 };
 
 class Database {
@@ -460,7 +465,62 @@ public:
 				}
 				a = b + 1;
 			}
+			cycle_phase(c, ground);
 		}
+	}
+
+	// Left-foot strikes (the foot comes to rest on the clip's ground) split the clip into gait
+	// cycles; a loop's cycles run on across its seam into the next pass.
+	void cycle_phase(Clip &c, float ground) const {
+		const size_t B = bone_names.size();
+		const int F = c.frames;
+		const int n = c.loop ? 2 * F - 1 : F;
+		auto at = [&](int f) { return c.bones[size_t(f % F) * B + 0]; }; // LeftFoot
+		std::vector<int> strikes;
+		bool was = true;
+		for (int i = 0; i < n; ++i) {
+			const int f = c.loop && i >= F ? i - (F - 1) : i;
+			const int g = std::min(f + 1, F - 1), h = std::max(g - 1, 0);
+			const v3 v = (at(g) - at(h)) * c.fps;
+			const bool planted = at(f).y <= ground + settings.strike_feet &&
+					std::sqrt(v.x * v.x + v.z * v.z) < settings.strike_speed;
+			if (planted && !was) {
+				strikes.push_back(i);
+			}
+			was = planted;
+		}
+		std::vector<float> ph(size_t(n), -1.0f);
+		for (size_t k = 0; k + 1 < strikes.size(); ++k) {
+			const int a = strikes[k], b = strikes[k + 1];
+			const float secs = float(b - a) / c.fps;
+			if (secs < settings.min_cycle || secs > settings.max_cycle) {
+				continue;
+			}
+			for (int i = a; i < b; ++i) {
+				ph[size_t(i)] = float(i - a) / float(b - a);
+			}
+		}
+		c.phase.assign(size_t(F), -1.0f);
+		for (int i = 0; i < n; ++i) {
+			const int f = c.loop && i >= F ? i - (F - 1) : i;
+			if (ph[size_t(i)] >= 0 && (c.phase[size_t(f)] < 0 || i < F)) {
+				c.phase[size_t(f)] = ph[size_t(i)];
+			}
+		}
+		// Only walking, jogging and running cycle; a crouch or crawl keeps its own kind.
+		for (int f = 0; f < F; ++f) {
+			if (c.kind[size_t(f)] == Air || c.kind[size_t(f)] == Between) {
+				c.phase[size_t(f)] = -1;
+			}
+		}
+	}
+	// How far apart two phases are around the cycle (0 to 0.5); 0 when either is outside one.
+	static float phase_gap(float a, float b) {
+		if (a < 0 || b < 0) {
+			return 0;
+		}
+		const float d = std::fabs(a - b);
+		return std::min(d, 1 - d);
 	}
 
 	void normalize(float *row) const {
@@ -665,34 +725,6 @@ struct Controller {
 		float yaw;
 	};
 	std::vector<Past> history;
-	// What played lately: a clip from t0 to t1, until `clock` reached `at`.
-	struct Span {
-		int clip;
-		float t0, t1, at;
-	};
-	std::vector<Span> played;
-	void note_play() {
-		if (played.empty() || played.back().clip != clip || time < played.back().t1 || time > played.back().t1 + 0.1f) {
-			played.push_back({clip, time, time, clock});
-		}
-		played.back().t1 = time;
-		played.back().at = clock;
-		size_t drop = 0;
-		while (drop < played.size() && played[drop].at < clock - db->settings.recent) {
-			++drop;
-		}
-		played.erase(played.begin(), played.begin() + long(drop));
-	}
-	// A pose this controller played in the last `recent` seconds (the span now playing included,
-	// up to the frame now playing).
-	bool played_lately(int c, float t) const {
-		for (const Span &p : played) {
-			if (p.clip == c && t >= p.t0 - db->settings.same_clip_window && t <= p.t1) {
-				return true;
-			}
-		}
-		return false;
-	}
 	float clock = 0;
 	int mode = Stand;          // the kind of pose asked for (Stand, Crouch or Crawl)
 	float locked_until = -1;   // a jump plays through to here in its clip before searching again
@@ -706,7 +738,6 @@ struct Controller {
 		time = 0;
 		since_search = 1e9f;
 		history.clear();
-		played.clear();
 		clock = 0;
 		mode = Stand;
 		locked_until = -1;
@@ -747,7 +778,6 @@ struct Controller {
 			time -= len_s;
 			++wraps;
 		}
-		note_play();
 		// Pull the character toward the simulation, never farther than the clamp.
 		const float k = damp_factor(s.sync_halflife, dt);
 		char_pos = char_pos + (sim_pos - char_pos) * k;
@@ -864,13 +894,21 @@ struct Controller {
 		const bool wrong_kind = c.kind[size_t(now_f)] != want;
 		int bc = db->pose_clip[size_t(best)];
 		float bt = float(db->pose_frame[size_t(best)]) / db->clips[size_t(bc)].fps;
-		// Never back to a pose played lately: play on, or, when the clip must change, take the best
-		// pose not played lately. A loop reaches its start only by wrapping.
-		if (db->settings.never_back && played_lately(bc, bt)) {
+		// A gait cycle is cyclic: going back in time, or to another clip, is a join only at the
+		// same phase. Out of phase, play on, or, when the clip must change, take the best pose in
+		// phase.
+		const float now_phase = c.phase[size_t(now_f)];
+		const float tol = db->settings.phase_tol;
+		auto out_of_phase = [&](int ci, float t) {
+			const Clip &k = db->clips[size_t(ci)];
+			const int f = std::clamp(int(std::lround(t * k.fps)), 0, k.frames - 1);
+			return tol > 0 && Database::phase_gap(now_phase, k.phase[size_t(f)]) > tol;
+		};
+		if (out_of_phase(bc, bt)) {
 			if (!at_end && !wrong_kind) {
 				return false;
 			}
-			best = db->search_mode_except(mode, q.data(), [&](int c, float t) { return played_lately(c, t); });
+			best = db->search_mode_except(mode, q.data(), out_of_phase);
 			if (best < 0) {
 				return false;
 			}

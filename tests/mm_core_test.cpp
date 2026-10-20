@@ -1,14 +1,14 @@
 // Native checks of mm_core.hpp on real Kimodo SOMA30 clips (a directory of
 // <key>/transforms.f32 + skeleton.txt + parents.txt as motion.elf's chain runner writes them).
-//   mm_core_test <clips dir> [--plant-kd] [--plant-back]
+//   mm_core_test <clips dir> [--plant-kd] [--plant-phase]
 // 1. The k-d tree finds the same cost as a brute-force scan on 500 queries (database rows plus
 //    noise). --plant-kd skips the far branch, which must make this check fail.
 // 2. Every 50th pose, queried with its own features, finds a pose of cost 0.
 // 3. The controller: standing, walking and running forward, and a 90-degree turn; it must move at
 //    about the asked speed, face the asked way, and not flicker between poses.
-// 4. Never back in time (RFD 2327): 60 s at 144 Hz walking, jogging and running, no jump to a
-//    pose played in the last 2 s other than a loop's wrap. --plant-back plays every clip as a one-shot
-//    and lets the search go back, as before the loops, which must make this check fail.
+// 4. Joins keep the gait phase (RFD 2327): 60 s at 144 Hz walking, jogging and running, every
+//    switch between two cycling poses, back in time or to another clip, lands within the phase
+//    tolerance. --plant-phase switches the phase rule off, which must make this check fail.
 #include "mm_core.hpp"
 
 #include <cstdio>
@@ -53,13 +53,14 @@ int main(int argc, char **argv) {
 		std::fprintf(stderr, "usage: mm_core_test <clips dir> [--plant-kd]\n");
 		return 2;
 	}
-	bool plant = false, plant_back = false;
+	bool plant = false, plant_phase = false;
 	for (int i = 2; i < argc; ++i) {
 		plant = plant || std::string(argv[i]) == "--plant-kd";
-		plant_back = plant_back || std::string(argv[i]) == "--plant-back";
+		plant_phase = plant_phase || std::string(argv[i]) == "--plant-phase";
 	}
 	mm::Database db;
-	db.settings.never_back = !plant_back;
+	const float tol = db.settings.phase_tol;
+	db.settings.phase_tol = plant_phase ? 0.0f : tol;
 	// argv[1] may name several clip dirs, separated by ':'.
 	std::vector<std::string> keys;
 	const std::string roots = argv[1];
@@ -88,7 +89,7 @@ int main(int argc, char **argv) {
 			continue;
 		}
 		const std::string k = path.substr(path.find_last_of('/') + 1);
-		const bool loop = !plant_back && std::ifstream(path + "/loop.txt").good();
+		const bool loop = std::ifstream(path + "/loop.txt").good();
 		std::printf("%s%s\n", db.add_clip(k, names, parents, xf, fps, loop).c_str(), loop ? " loop" : "");
 	}
 	std::printf("%s\n", db.bake().c_str());
@@ -230,41 +231,40 @@ int main(int argc, char **argv) {
 				list.c_str());
 		fails += ok ? 0 : 1;
 	}
-	// 4. Never back in time: a jump to a pose played in the last 2 s, other than a loop's wrap.
+	// 4. Joins keep the gait phase.
+	auto phase_at = [&](int ci, float t) {
+		const mm::Clip &k = db.clips[size_t(ci)];
+		return k.phase[size_t(std::clamp(int(std::lround(t * k.fps)), 0, k.frames - 1))];
+	};
 	for (const float speed : {1.3f, 2.5f, 3.5f}) {
 		mm::Controller ctl;
 		ctl.db = &db;
 		ctl.reset({}, 0, 0);
 		const float dt = 1.0f / 144;
-		struct Span {
-			int clip;
-			float t0, t1, at;
-		};
-		std::vector<Span> seen;
-		int back = 0, prev_wraps = 0;
+		int joins = 0, off = 0, backs = 0, prev_clip = -1, prev_wraps = 0;
+		float prev_time = 0, worst = 0;
 		for (int i = 0; i < 144 * 60; ++i) {
-			const float now = float(i) * dt;
 			ctl.update(dt, mm::v3{0, 0, speed}, std::numeric_limits<float>::quiet_NaN(), mm::Stand, false);
 			const bool wrapped = ctl.wraps != prev_wraps;
 			prev_wraps = ctl.wraps;
-			const bool goes_on = !seen.empty() && seen.back().clip == ctl.clip && ctl.time >= seen.back().t1 &&
-					ctl.time <= seen.back().t1 + 2 * dt;
-			if (goes_on) {
-				seen.back().t1 = ctl.time;
-				seen.back().at = now;
-				continue;
-			}
-			if (!wrapped) {
-				for (const Span &p : seen) {
-					back += p.clip == ctl.clip && ctl.time >= p.t0 && ctl.time <= p.t1 && p.at >= now - 2.0f;
+			const bool goes_on = ctl.clip == prev_clip && ctl.time >= prev_time && ctl.time <= prev_time + 2 * dt;
+			if (prev_clip >= 0 && !goes_on && !wrapped) {
+				const float was = phase_at(prev_clip, prev_time + dt), now = phase_at(ctl.clip, ctl.time);
+				if (was >= 0 && now >= 0) {
+					++joins;
+					backs += ctl.clip == prev_clip && ctl.time < prev_time;
+					const float gap = mm::Database::phase_gap(was, now);
+					worst = std::max(worst, gap);
+					off += gap > tol;
 				}
 			}
-			seen.push_back({ctl.clip, ctl.time, ctl.time, now});
+			prev_clip = ctl.clip;
+			prev_time = ctl.time;
 		}
 		const float dist = mm::len(ctl.char_pos);
-		const bool ok = back == 0 && dist > 0.6f * speed * 60 && dist < 1.25f * speed * 60;
-		std::printf("BACK %s speed=%.1f back=%d wraps=%d switches=%d travel=%.1f m\n", ok ? "PASS" : "FAIL", double(speed), back,
-				ctl.wraps, ctl.switches, double(dist));
+		const bool ok = joins > 0 && off == 0 && dist > 0.6f * speed * 60 && dist < 1.25f * speed * 60;
+		std::printf("PHASE %s speed=%.1f joins=%d back_in_clip=%d out_of_phase=%d worst=%.3f wraps=%d switches=%d travel=%.1f m\n",
+				ok ? "PASS" : "FAIL", double(speed), joins, backs, off, double(worst), ctl.wraps, ctl.switches, double(dist));
 		fails += ok ? 0 : 1;
 	}
 	std::printf(fails ? "MM-CORE-FAIL %d\n" : "MM-CORE-PASS\n", fails);

@@ -1,6 +1,6 @@
 model kimodo_soma
 prompt A person runs forward and curves to the right.
-frames 152 fps 30.0 joints 30 steps 50 seed 1171
+frames 65 fps 30.0 joints 30 steps 50 seed 1171
 Hips
 Spine1
 Spine2

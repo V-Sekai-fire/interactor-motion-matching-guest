@@ -92,8 +92,22 @@ int main(int argc, char **argv) {
 			std::printf("LOOP-KEPT %s (already cut)\n", n.c_str());
 			continue;
 		}
-		const mm::LoopCut lc = mm::cut_loop(xf, parents, fps);
+		// The gait cycles come from the guest's own strike detection on this clip.
+		mm::Database one;
+		std::vector<std::string> joint_names;
+		for (const std::string &l : sk) {
+			if (l.rfind("model ", 0) != 0 && l.rfind("prompt ", 0) != 0 && l.rfind("frames ", 0) != 0) {
+				joint_names.push_back(l);
+			}
+		}
+		one.add_clip(n, joint_names, parents, xf, fps);
+		one.bake();
+		const mm::LoopCut lc = mm::cut_loop(xf, parents, fps, one.clips[0].phase);
 		++measured;
+		if (lc.to <= lc.from) {
+			std::printf("LOOP-ONESHOT %s no run of two whole gait cycles\n", n.c_str());
+			continue;
+		}
 		if (!lc.ok()) {
 			std::printf("LOOP-ONESHOT %s seam %.2f deg over ordinary %.2f deg\n", n.c_str(), lc.seam_deg, lc.ordinary_deg);
 			continue;
