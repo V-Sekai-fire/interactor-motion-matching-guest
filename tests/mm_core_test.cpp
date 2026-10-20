@@ -53,10 +53,11 @@ int main(int argc, char **argv) {
 		std::fprintf(stderr, "usage: mm_core_test <clips dir> [--plant-kd]\n");
 		return 2;
 	}
-	bool plant = false, plant_phase = false;
+	bool plant = false, plant_phase = false, foot_phase = false;
 	for (int i = 2; i < argc; ++i) {
 		plant = plant || std::string(argv[i]) == "--plant-kd";
 		plant_phase = plant_phase || std::string(argv[i]) == "--plant-phase";
+		foot_phase = foot_phase || std::string(argv[i]) == "--foot-phase"; // ignore phase.f32
 	}
 	mm::Database db;
 	const float tol = db.settings.phase_tol;
@@ -91,6 +92,15 @@ int main(int argc, char **argv) {
 		const std::string k = path.substr(path.find_last_of('/') + 1);
 		const bool loop = std::ifstream(path + "/loop.txt").good();
 		std::printf("%s%s\n", db.add_clip(k, names, parents, xf, fps, loop).c_str(), loop ? " loop" : "");
+		std::vector<float> ph;
+		std::ifstream pf(path + "/phase.f32", std::ios::binary);
+		if (pf && !foot_phase) {
+			pf.seekg(0, std::ios::end);
+			ph.resize(size_t(pf.tellg()) / 4);
+			pf.seekg(0);
+			pf.read(reinterpret_cast<char *>(ph.data()), long(ph.size() * 4));
+			db.set_phase(int(db.clips.size()) - 1, ph);
+		}
 	}
 	std::printf("%s\n", db.bake().c_str());
 	if (plant) {
@@ -236,6 +246,10 @@ int main(int argc, char **argv) {
 		const mm::Clip &k = db.clips[size_t(ci)];
 		return k.phase[size_t(std::clamp(int(std::lround(t * k.fps)), 0, k.frames - 1))];
 	};
+	auto curve_at = [&](int ci, float t) {
+		const mm::Clip &k = db.clips[size_t(ci)];
+		return k.curve[size_t(std::clamp(int(std::lround(t * k.fps)), 0, k.frames - 1))];
+	};
 	for (const float speed : {1.3f, 2.5f, 3.5f}) {
 		mm::Controller ctl;
 		ctl.db = &db;
@@ -250,7 +264,7 @@ int main(int argc, char **argv) {
 			const bool goes_on = ctl.clip == prev_clip && ctl.time >= prev_time && ctl.time <= prev_time + 2 * dt;
 			if (prev_clip >= 0 && !goes_on && !wrapped) {
 				const float was = phase_at(prev_clip, prev_time + dt), now = phase_at(ctl.clip, ctl.time);
-				if (was >= 0 && now >= 0) {
+				if (was >= 0 && now >= 0 && curve_at(prev_clip, prev_time + dt) == curve_at(ctl.clip, ctl.time)) {
 					++joins;
 					backs += ctl.clip == prev_clip && ctl.time < prev_time;
 					const float gap = mm::Database::phase_gap(was, now);
