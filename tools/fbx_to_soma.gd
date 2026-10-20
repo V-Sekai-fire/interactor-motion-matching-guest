@@ -5,7 +5,8 @@ extends SceneTree
 # joint's world rotation relative to Rin's rest (SOMA's rest rotations are identity), and the hips
 # take Rin's pelvis position.
 #   godot --headless --path <any project> --script tools/fbx_to_soma.gd ++ \
-#     --soma=<a Kimodo clip dir> --out=<dir> <file.fbx>...
+#     --soma=<a Kimodo clip dir> --out=<dir> [--fps=60] <file.fbx>...
+# The gem's clips are recorded at 60 fps, so 60 (the default) samples every recorded frame.
 
 const MAP := {
 	"Hips": "C_pelvis_JNT",
@@ -39,7 +40,6 @@ const MAP := {
 	"RightFoot": "R_foot_JNT",
 	"RightToeBase": "R_toe_JNT",
 }
-const FPS := 30.0
 
 
 func _arg(n: String) -> String:
@@ -95,6 +95,7 @@ func _process(_d: float) -> bool:
 			bind_inv.append(sk.get_bone_global_rest(b).basis.orthonormalized().inverse())
 		var rin_hips_h := sk.get_bone_global_rest(idx[0]).origin.y
 		var scale := soma_hips_h / rin_hips_h
+		var FPS := float(_arg("fps")) if _arg("fps") != "" else 60.0
 		var frames := int(floor(anim.length * FPS)) + 1
 		var xf := PackedFloat32Array()
 		xf.resize(frames * names.size() * 12)
@@ -117,6 +118,21 @@ func _process(_d: float) -> bool:
 				xf[o + 9] = t.x
 				xf[o + 10] = t.y
 				xf[o + 11] = t.z
+		# The recordings open on the T-pose (every joint at rest, hips at the origin); drop those
+		# frames so a clip starts on its first recorded pose.
+		var first := 0
+		while first < frames - 1:
+			var rest := true
+			for k in names.size() * 12:
+				if k % 12 < 9 and absf(xf[first * names.size() * 12 + k] - (1.0 if k % 12 in [0, 4, 8] else 0.0)) > 0.01:
+					rest = false
+					break
+			if not rest:
+				break
+			first += 1
+		if first > 0:
+			xf = xf.slice(first * names.size() * 12)
+			frames -= first
 		var key := path.get_file().get_basename().to_snake_case()
 		var dir := out_dir.path_join(key)
 		DirAccess.make_dir_recursive_absolute(dir)

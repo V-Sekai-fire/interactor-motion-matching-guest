@@ -1,6 +1,6 @@
 model o3de_motionmatching
 prompt JumpsFreeRoam1.fbx (O3DE MotionMatching gem, Rin)
-frames 2398 fps 30.0 joints 30
+frames 4795 fps 60.0 joints 30
 Hips
 Spine1
 Spine2

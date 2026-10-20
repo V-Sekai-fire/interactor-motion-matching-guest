@@ -20,7 +20,16 @@ stops, speed changes and sustained jogs and runs. They are the output of a progr
 (walks, jogs, runs, pivots, turns on the spot, circles, snake, crouching, jumps; about 24 minutes,
 Apache-2.0 OR MIT, see `data/o3de-motionmatching/LICENSE.txt`), moved from its Rin skeleton to
 SOMA30 by `tools/fbx_to_soma.gd` (both rest in a T-pose, Y up, facing +Z, so each joint keeps its
-world rotation from rest). `Pushes1` is left out: it is the character being pushed.
+world rotation from rest). `Pushes1` is left out: it is the character being pushed. The clips
+keep the gem's recorded 60 fps, and each recording's opening T-pose frame is dropped.
+
+Each clip stays at the rate it was made at, so the set mixes 30 and 60 fps; nothing is
+resampled. The core works in seconds: bone velocities are central differences over 1/30 s
+each side read between frames, and the facing averages 0.25 s each side with the edge frames
+weighted by the part inside. `mm_core_test`'s RATE check holds each 60 fps clip against its
+own every-second frame read as a 30 fps clip (features within 0.25 of a spread, phase within
+0.04 of a cycle, 99th percentile); `--plant-rate` reads that twin at the wrong rate and must
+fail.
 
 ## Steady gaits are loops
 

@@ -50,13 +50,13 @@ def main():
     per_curve = {}
     write = shift == 0.0
     for line in open(os.path.join(ds, "clips.tsv")):
-        _, d, n = line.rstrip("\n").split("\t")
-        n = int(n)
+        _, d, n, fps = line.rstrip("\n").split("\t")
+        n, fps = int(n), float(fps)
         sl = slice(at, at + n)
         at += n
         if write:
             np.stack([index[sl], phase[sl], amp[sl], freq[sl]], 1).astype(np.float32).tofile(os.path.join(d, "phase.f32"))
-        for f in strikes(d, 30.0):
+        for f in strikes(d, fps):
             per_curve.setdefault(int(index[sl][f]), []).append((phase[sl][f] + shift * (f % 2)) % 1.0)
     assert at == len(phase), (at, len(phase))
     worst = 0.0

@@ -1,3 +1,4 @@
+#include <algorithm>
 // Native checks of mm_core.hpp on real Kimodo SOMA30 clips (a directory of
 // <key>/transforms.f32 + skeleton.txt + parents.txt as motion.elf's chain runner writes them).
 //   mm_core_test <clips dir> [--plant-kd] [--plant-phase]
@@ -53,10 +54,11 @@ int main(int argc, char **argv) {
 		std::fprintf(stderr, "usage: mm_core_test <clips dir> [--plant-kd]\n");
 		return 2;
 	}
-	bool plant = false, plant_phase = false, foot_phase = false;
+	bool plant = false, plant_phase = false, foot_phase = false, plant_rate = false;
 	for (int i = 2; i < argc; ++i) {
 		plant = plant || std::string(argv[i]) == "--plant-kd";
 		plant_phase = plant_phase || std::string(argv[i]) == "--plant-phase";
+		plant_rate = plant_rate || std::string(argv[i]) == "--plant-rate"; // twins read at the wrong rate
 		foot_phase = foot_phase || std::string(argv[i]) == "--foot-phase"; // ignore phase.f32
 	}
 	mm::Database db;
@@ -81,6 +83,14 @@ int main(int argc, char **argv) {
 		keys.insert(keys.end(), here.begin(), here.end());
 		s = e + 1;
 	}
+	struct Raw {
+		std::string name;
+		std::vector<std::string> names;
+		std::vector<int32_t> parents;
+		std::vector<float> xf;
+		float fps;
+	};
+	std::vector<Raw> fast; // clips above 30 fps, for the mixed-rate check
 	for (const std::string &path : keys) {
 		std::vector<std::string> names;
 		std::vector<int32_t> parents;
@@ -91,6 +101,9 @@ int main(int argc, char **argv) {
 		}
 		const std::string k = path.substr(path.find_last_of('/') + 1);
 		const bool loop = std::ifstream(path + "/loop.txt").good();
+		if (fps > 31) {
+			fast.push_back({k, names, parents, xf, fps});
+		}
 		std::printf("%s%s\n", db.add_clip(k, names, parents, xf, fps, loop).c_str(), loop ? " loop" : "");
 		std::vector<float> ph;
 		std::ifstream pf(path + "/phase.f32", std::ios::binary);
@@ -279,6 +292,56 @@ int main(int argc, char **argv) {
 		const bool ok = joins > 0 && off == 0 && dist > 0.6f * speed * 60 && dist < 1.25f * speed * 60;
 		std::printf("PHASE %s speed=%.1f joins=%d back_in_clip=%d out_of_phase=%d worst=%.3f wraps=%d switches=%d travel=%.1f m\n",
 				ok ? "PASS" : "FAIL", double(speed), joins, backs, off, double(worst), ctl.wraps, ctl.switches, double(dist));
+		fails += ok ? 0 : 1;
+	}
+	// 5. Mixed rates (RFD 2327): a clip at 60 fps and its own every-second frame as a 30 fps clip
+	// must give the same pose features and the same gait phase at the same moments, so clips
+	// of both rates sit in one search. The control reads the 30 fps twin as if it were 60 fps.
+	{
+		const float feat_tol = 0.25f, phase_tol_rate = 0.04f;
+		std::vector<float> diffs, gaps;
+		int both = 0, one = 0;
+		for (const Raw &r : fast) {
+			const size_t J = r.parents.size(), F = r.xf.size() / (J * 12);
+			const int up = int(std::lround(r.fps / 30));
+			std::vector<float> half;
+			for (size_t f = 0; f < F; f += size_t(up)) {
+				half.insert(half.end(), r.xf.begin() + long(f * J * 12), r.xf.begin() + long((f + 1) * J * 12));
+			}
+			mm::Database t;
+			t.settings = db.settings;
+			t.add_clip(r.name, r.names, r.parents, r.xf, r.fps);
+			t.add_clip(r.name + "_30", r.names, r.parents, half, plant_rate ? r.fps : r.fps / float(up));
+			t.bake();
+			const int D = db.dims();
+			for (int k = 0; k < t.clips[1].frames; ++k) {
+				const int f = k * up;
+				const std::vector<float> a = t.raw_features(0, f), b = t.raw_features(1, k);
+				for (int d = 0; d < D; ++d) {
+					diffs.push_back(std::fabs(a[size_t(d)] - b[size_t(d)]) / std::max(db.stdev[size_t(d)], 1e-6f));
+				}
+				const float pa = t.clips[0].phase[size_t(f)], pb = t.clips[1].phase[size_t(k)];
+				if (pa >= 0 && pb >= 0) {
+					++both;
+					gaps.push_back(mm::Database::phase_gap(pa, pb));
+				} else if ((pa >= 0) != (pb >= 0)) {
+					++one;
+				}
+			}
+		}
+		auto p99 = [](std::vector<float> v) {
+			if (v.empty()) {
+				return 0.0f;
+			}
+			std::sort(v.begin(), v.end());
+			return v[std::min(v.size() - 1, size_t(double(v.size()) * 0.99))];
+		};
+		const float fd = p99(diffs), pg = p99(gaps);
+		const bool ok = !fast.empty() && fd <= feat_tol && pg <= phase_tol_rate;
+		std::printf("RATE %s clips=%zu feature_p99=%.3f sd (gate %.2f) phase_p99=%.3f cycle (gate %.2f) "
+					"in_cycle_both=%d only_one=%d%s\n",
+				ok ? "PASS" : "FAIL", fast.size(), fd, feat_tol, pg, phase_tol_rate, both, one,
+				plant_rate ? " [control: twins at the wrong rate]" : "");
 		fails += ok ? 0 : 1;
 	}
 	std::printf(fails ? "MM-CORE-FAIL %d\n" : "MM-CORE-PASS\n", fails);
