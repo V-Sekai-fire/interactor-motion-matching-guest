@@ -23,8 +23,8 @@ jobs:
             echo "the planted k-d bug passed: the check cannot fail" >&2
             exit 1
           fi
-          if ./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-back; then
-            echo "going back to played poses passed: the check cannot fail" >&2
+          if ./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-phase; then
+            echo "joins out of phase passed: the check cannot fail" >&2
             exit 1
           fi
       - name: The steady gaits' loop seams, and the uncut control

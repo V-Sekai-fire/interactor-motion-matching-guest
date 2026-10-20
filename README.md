@@ -24,17 +24,19 @@ world rotation from rest). `Pushes1` is left out: it is the character being push
 
 ## Steady gaits are loops
 
-`data/kimodo-locomotion/loops.txt` lists the steady gaits (idles, walks, jogs, runs, sprints,
-crouch walks, crawls, and their curves and circles). `tools/make_loops.cpp` cuts each to whole
-strides: of the frame pairs at least half the clip apart whose keypoints (every joint in the
-root's floor frame, and its speed, at unit spread) agree best, the one with the smallest seam;
-the last 0.2 s fade into the frames before the cut's start, moved on by one pass's turn and
-shift, so the last frame is the first one pass on. A clip whose seam (the largest joint turn over
-the fade and the wrap) is over its ordinary frame step (the 95th percentile of its steps) stays a
-one-shot; a cut clip gets a `loop.txt` with its source frames and both numbers. The host passes
-the loop flag to `mm_add_clip`: a loop's time wraps at its end with the root carried on, and its
-end forces no search. No search picks a pose played in the last 2 s, so a stride is never played
-again by jumping back to its start (RFD 2327, "Steady gaits loop through a seam").
+`data/kimodo-locomotion/loops.txt` lists the steady gaits. `tools/make_loops.cpp` cuts each
+from one left-foot strike to a later one at least two gait cycles on, with every frame between
+inside a cycle, choosing the run with the smallest seam; the last 0.2 s fade into the frames
+before the cut's start, moved on by one pass's turn and shift. A clip with no such run, or whose
+seam (the largest joint turn over the fade and the wrap) is over its ordinary frame step (the
+95th percentile of its steps), stays a one-shot; a cut clip gets a `loop.txt`. The host passes the
+loop flag to `mm_add_clip`: a loop wraps at its end with the root carried on, and its end forces
+no search.
+
+Every frame has a gait phase, 0 to 1 from one left-foot strike to the next (none outside a
+cycle). A gait is cyclic, so going back to an earlier stride is an ordinary join, but a switch
+between two cycling poses must keep the phase within 0.06 of a cycle (RFD 2327, which plans a
+learned phase in place of the foot strikes).
 
 ## Kinds of pose
 
@@ -63,7 +65,7 @@ elixir tools/build.exs --build=<dir>          # mm.elf, with the riscv64-sysroot
 c++ -std=c++20 -O2 -ffp-contract=off -Isrc tests/mm_core_test.cpp -o mm_core_test
 ./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching            # MM-CORE-PASS
 ./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-kd # must fail
-./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-back # must fail
+./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-phase # must fail
 c++ -std=c++20 -O2 -Isrc tools/make_loops.cpp -o make_loops
 ./make_loops data/kimodo-locomotion data/kimodo-locomotion/loops.txt          # cut (in place)
 ./make_loops data/kimodo-locomotion data/kimodo-locomotion/loops.txt --check  # LOOPS-OK
