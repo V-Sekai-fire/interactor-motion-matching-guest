@@ -1,4 +1,4 @@
-// A steady gait as a loop (RFD 2327, "Steady gaits loop through a seam"): cut a clip in
+// A steady gait as a loop (RFD66606-2327, "Steady gaits loop through a seam"): cut a clip in
 // motion.elf's layout to whole strides, fade its end into its start carried by one loop's travel,
 // and measure the seam by joint angle against the clip's ordinary frame steps.
 #pragma once

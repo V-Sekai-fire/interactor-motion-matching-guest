@@ -1,4 +1,4 @@
-// Remake a motion set's steady gaits as loops (src/mm_loop.hpp, RFD 2327).
+// Remake a motion set's steady gaits as loops (src/mm_loop.hpp, RFD66606-2327).
 //   make_loops <set dir> <list>            cut each listed clip in place and write its loop.txt
 //   make_loops <set dir> <list> --check    measure the loops already cut; nothing is written
 //   make_loops <set dir> <list> --uncut    control: play each listed clip uncut as a loop
