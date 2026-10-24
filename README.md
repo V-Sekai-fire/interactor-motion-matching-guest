@@ -44,7 +44,7 @@ no search.
 
 Every frame has a gait phase, 0 to 1 from one left-foot strike to the next (none outside a
 cycle). A gait is cyclic, so going back to an earlier stride is an ordinary join, but a switch
-between two cycling poses must keep the phase within 0.06 of a cycle (RFD 2327, which plans a
+between two cycling poses must keep the phase within 0.06 of a cycle (RFD66606-2327, which plans a
 learned phase in place of the foot strikes).
 
 ## Kinds of pose

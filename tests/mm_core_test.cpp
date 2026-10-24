@@ -7,7 +7,7 @@
 // 2. Every 50th pose, queried with its own features, finds a pose of cost 0.
 // 3. The controller: standing, walking and running forward, and a 90-degree turn; it must move at
 //    about the asked speed, face the asked way, and not flicker between poses.
-// 4. Joins keep the gait phase (RFD 2327): 60 s at 144 Hz walking, jogging and running, every
+// 4. Joins keep the gait phase (RFD66606-2327): 60 s at 144 Hz walking, jogging and running, every
 //    switch between two cycling poses, back in time or to another clip, lands within the phase
 //    tolerance. --plant-phase switches the phase rule off, which must make this check fail.
 #include "mm_core.hpp"
@@ -294,7 +294,7 @@ int main(int argc, char **argv) {
 				ok ? "PASS" : "FAIL", double(speed), joins, backs, off, double(worst), ctl.wraps, ctl.switches, double(dist));
 		fails += ok ? 0 : 1;
 	}
-	// 5. Mixed rates (RFD 2327): a clip at 60 fps and its own every-second frame as a 30 fps clip
+	// 5. Mixed rates (RFD66606-2327): a clip at 60 fps and its own every-second frame as a 30 fps clip
 	// must give the same pose features and the same gait phase at the same moments, so clips
 	// of both rates sit in one search. The control reads the 30 fps twin as if it were 60 fps.
 	{
