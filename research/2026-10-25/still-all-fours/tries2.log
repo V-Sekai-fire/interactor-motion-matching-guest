@@ -1,0 +1,10 @@
+embed: :ok
+embed ms 27278
+GEN-OK crawl_idle_b frames=300 fps=30.0 joints=30 ms=125627
+GEN-OK crawl_idle_c frames=300 fps=30.0 joints=30 ms=120752
+GEN-OK crouch_idle frames=300 fps=30.0 joints=30 ms=140576
+generate: {:ok,
+ ["GEN-OK crawl_idle_b frames=300 fps=30.0 joints=30 ms=125627",
+  "GEN-OK crawl_idle_c frames=300 fps=30.0 joints=30 ms=120752",
+  "GEN-OK crouch_idle frames=300 fps=30.0 joints=30 ms=140576"]}
+total ms 417178
