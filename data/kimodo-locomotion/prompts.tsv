@@ -45,6 +45,7 @@ crawl_left	A person crawls on hands and knees and turns to the left.
 crawl_right	A person crawls on hands and knees and turns to the right.
 crawl_down_up	A person gets down on hands and knees, crawls forward, then stands up.
 crawl_stop	A person crawls forward on hands and knees, then stops and stays still.
+crawl_idle_a	A person is on hands and knees and stays still, breathing and swaying slightly, facing forward.
 jump_place	A person jumps up in place several times.
 jump_forward	A person jumps forward several times.
 walk_jump	A person walks forward and jumps, then keeps walking.
