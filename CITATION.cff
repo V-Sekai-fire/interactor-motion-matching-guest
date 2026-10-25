@@ -77,3 +77,74 @@ references:
   notes: Motion capture of the Rin character (walks, jogs, runs, pivots, turns, circles, snake,
     crouching, jumps); 21 of its 22 clips (not Pushes1) moved to SOMA30 by tools/fbx_to_soma.gd
     in data/o3de-motionmatching, with the O3DE licence files.
+- type: software
+  title: Motion-Matching
+  authors:
+  - family-names: Holden
+    given-names: Daniel
+    alias: orangeduck
+  repository-code: https://github.com/orangeduck/Motion-Matching
+  license: MIT
+  notes: The pose-cost candidates facing as a direction vector, normalisation per feature group
+    and a transition cost on every switch.
+- type: article
+  title: Learned Motion Matching
+  authors:
+  - family-names: Holden
+    given-names: Daniel
+  - family-names: Kanoun
+    given-names: Oussama
+  - family-names: Perepichka
+    given-names: Maksym
+  - family-names: Popa
+    given-names: Tiberiu
+  journal: ACM Transactions on Graphics
+  volume: 39
+  issue: 4
+  year: 2020
+  doi: 10.1145/3386569.3392440
+- type: conference-paper
+  title: 'The Right Foot in the Wrong Place: Character Locomotion in Half-Life: Alyx'
+  authors:
+  - family-names: van den Heuvel
+    given-names: Joe
+  conference:
+    name: SIGGRAPH 2021
+  year: 2021
+  url: http://media.steampowered.com/apps/valve/2021/Half-Life_Alyx_Locomotion_Slides.pdf
+  notes: The pose-cost candidates footbase position, step progression as a 2D vector, trajectory
+    samples by distance, the correction counted in the current pose's score and flattened goal
+    samples on slopes.
+- type: conference-paper
+  title: 'WalkTheDog: Cross-Morphology Motion Alignment via Phase Manifolds'
+  authors:
+  - family-names: Li
+    given-names: Peizhuo
+  - family-names: Starke
+    given-names: Sebastian
+  - family-names: Ye
+    given-names: Yuting
+  - family-names: Sorkine-Hornung
+    given-names: Olga
+  conference:
+    name: SIGGRAPH 2024 Conference Papers
+  year: 2024
+  doi: 10.1145/3641519.3657508
+  notes: The learned phase that mm_clip_phase takes; tools/phase trains its vector-quantised
+    periodic autoencoder (train_vq.py). The phase window and duration terms of its
+    frequency-scaled motion matching are pose-cost candidates.
+- type: article
+  title: 'Frontier Learning: Training LLM Reasoners at the Edge of Capability'
+  authors:
+  - family-names: Faro
+    given-names: Robin
+  - family-names: Ramesh
+    given-names: Shyam Sundhar
+  - family-names: Bogunovic
+    given-names: Ilija
+  - family-names: Lucchi
+    given-names: Aurelien
+  year: 2026
+  doi: 10.48550/arXiv.2609.35426
+  notes: Level search with regret that picks the walk levels; a change to the pose cost is kept
+    only when frontier success rises.
