@@ -1,0 +1,8 @@
+GEN-OK stand_to_crawl frames=300 fps=30.0 joints=30 ms=146495
+GEN-OK crawl_to_stand frames=300 fps=30.0 joints=30 ms=303309
+GEN-OK crouch_to_crawl frames=300 fps=30.0 joints=30 ms=456956
+GEN-OK crawl_to_crouch frames=300 fps=30.0 joints=30 ms=581650
+GEN-OK crouch_to_stand frames=300 fps=30.0 joints=30 ms=756795
+GEN-OK walk_to_stand frames=300 fps=30.0 joints=30 ms=891453
+GEN-OK run_to_stand frames=300 fps=30.0 joints=30 ms=1020552
+GEN-DONE bad=0

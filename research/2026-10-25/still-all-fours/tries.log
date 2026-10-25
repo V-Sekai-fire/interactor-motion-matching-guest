@@ -1,0 +1,5 @@
+embed: :ok
+embed ms 32477
+generate: {:error,
+ "godot.macos.editor.double.arm64 exited 143: Godot Engine v4.8.dev.double.gh.97dab7a63 (2026-09-16 19:01:28 UTC) - https://godotengine.org\nMetal 4.0 - Forward+ - Using Device #0: Apple - Apple M2 Pro (Apple8)\n\nGEN-OK crawl_idle_a frames=300 fps=30.0 joints=30 ms=127345\n"}
+total ms 229988
