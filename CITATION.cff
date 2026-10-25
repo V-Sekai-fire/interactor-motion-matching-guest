@@ -130,16 +130,9 @@ references:
     name: SIGGRAPH 2024 Conference Papers
   year: 2024
   doi: 10.1145/3641519.3657508
-  notes: The learned phase that mm_clip_phase takes, here from a periodic autoencoder with
-    residual FSQ codes in place of its vector-quantised codebook; the phase window and duration
-    terms of its frequency-scaled motion matching are pose-cost candidates.
-- type: software
-  title: interactor-residual-fsq-recommender
-  authors:
-  - *fire
-  repository-code: https://github.com/V-Sekai-fire/interactor-residual-fsq-recommender
-  license: MIT
-  notes: The residual FSQ codec for the learned phase's curve codes.
+  notes: The learned phase that mm_clip_phase takes; tools/phase trains its vector-quantised
+    periodic autoencoder (train_vq.py). The phase window and duration terms of its
+    frequency-scaled motion matching are pose-cost candidates.
 - type: article
   title: 'Frontier Learning: Training LLM Reasoners at the Edge of Capability'
   authors:
