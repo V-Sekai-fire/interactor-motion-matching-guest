@@ -14,7 +14,9 @@
 #   embed    tools/bridges/prompts.tsv through the text encoder
 #   generate every prompt on motion.elf (Kimodo on ggml-rd, local RenderingDevice), 10 s, seed 1171,
 #            50 steps, as the database's clips
-#   kinds    mm_kinds: the matcher's per-frame kind for the database and the new clips
+#   kinds    mm_kinds: the matcher's per-frame kind for the database and the new clips; knees and
+#            hands within a planted foot's height of the ground carry the body (not Air); the
+#            control lifts them 0.5 m and every frame they carried must fall back to its feet-only kind
 #   assets   the SOMA-2603.16858 (SOMA-X) asset release of interactor-soma-x, checked against its
 #            SHA256SUMS.txt
 #   kernels  contract-anny-kernels' SPIR-V (kernels/anny/gen.sh --no-emit, the committed Slang)
@@ -24,13 +26,16 @@
 #            against SOMA-X's own torch vertices within 1% of the clip's largest corrective, and
 #            the correctives-off control must fail it; also the join distances (below) on the GPU
 #   joins    the gap at each clip switch into and out of a bridge clip, as mesh face-vertex distance
-#            on the posed body in the character frame: max and mean over the 18,056 vertices
-#            against the closest database frame of the same kind; the same join one frame off
-#            must be larger (control), and each target against itself must be 0
+#            on the posed body in the character frame (max and mean over the 18,056 vertices): the
+#            join is the database frame of the same kind with the least mean, ties by max
+#            (tools/bridges/joins.exs); both frames one off must be larger, the pick moved one frame
+#            must fail that (planted), and each target against itself must be 0
 #   sheets   DEFERRED: body orbit views (contract-orbit-views), render_sheets/1
 #   video    DEFERRED: one CineForm MKV per clip from the godot-cineform engine, render_video/1
 # Tokens: gh's own login (Bao-rotated) and bao-hf-token on stdin; neither reaches argv.
 # Functions return {:ok, value} or {:error, reason}; nothing raises.
+
+Code.require_file("bridges/joins.exs", __DIR__)
 
 defmodule Bridges do
   import Bitwise
@@ -206,7 +211,8 @@ defmodule Bridges do
     kinds = Path.join(ctx.cache, "kinds")
 
     with :ok <- File.mkdir_p(kinds),
-         {:ok, _} <- cap(Path.join(ctx.cache, "mm_kinds"), [kinds | db_dirs(ctx) ++ bridge_dirs(ctx)]) do
+         {:ok, log} <- cap(Path.join(ctx.cache, "mm_kinds"), [kinds | db_dirs(ctx) ++ bridge_dirs(ctx)]) do
+      log |> String.split("\n") |> Enum.filter(&String.starts_with?(&1, ["SUPPORT", "KINDS"])) |> Enum.each(&IO.puts/1)
       need(kinds, Enum.map(bridge_keys(ctx), &(&1 <> ".kinds")))
     end
   end
@@ -267,8 +273,8 @@ defmodule Bridges do
   def step_joins(ctx) do
     out = Path.join(ctx.cache, "body/gpu")
 
-    with {:ok, rows} <- joins(out, Path.join(ctx.cache, "kinds"), bridge_keys(ctx)) do
-      head = "join\tkind\tdatabase frame\tmax_mm\tmean_mm\toff_frame\toff_max_mm\toff_mean_mm\tself_mm\n"
+    with {:ok, rows} <- BridgeJoins.run(out, Path.join(ctx.cache, "kinds"), bridge_keys(ctx)) do
+      head = "join\tkind\tdatabase frame\tmax_mm\tmean_mm\tone frame off\tneighbours\tplanted pick\tself_mm\n"
       tsv = Enum.map_join(rows, "", fn r -> Enum.join(r.cols, "\t") <> "\n" end)
       Enum.each(rows, &IO.puts(&1.line))
       bad = Enum.reject(rows, & &1.ok)
@@ -405,67 +411,6 @@ defmodule Bridges do
   end
 
   defp vd(<<>>, <<>>, mx, s, n), do: {mx, s / max(n, 1)}
-
-  defp floats(path) do
-    with {:ok, b} <- File.read(path), do: {:ok, for(<<x::float-32-little <- b>>, do: x) |> List.to_tuple()}
-  end
-
-  defp kinds_of(path) do
-    with {:ok, t} <- File.read(path),
-         do: {:ok, t |> String.split("\n", trim: true) |> Enum.map(&String.to_integer/1) |> List.to_tuple()}
-  end
-
-  # body.gd's joins/<clip>.f32: frames x targets x (max, mean) metres. For each target (a bridge's
-  # first or last frame) the join is the closest database frame of the same kind by mean distance
-  # (all database frames when none has that kind); controls: the same join one frame off is larger,
-  # and the target against its own frame is 0 (the batched GPU path kept frame order).
-  defp joins(out, kinds, bridges) do
-    with {:ok, tn} <- File.read(Path.join([out, "joins", "targets.txt"])) do
-      targets = String.split(tn, "\n", trim: true)
-      ntg = length(targets)
-      clips = Path.wildcard(Path.join([out, "joins", "*.f32"])) |> Enum.map(&Path.basename(&1, ".f32"))
-      data = Map.new(clips, fn c -> {c, elem(floats(Path.join([out, "joins", c <> ".f32"])), 1)} end)
-      kd = Map.new(clips, fn c -> {c, kinds_of(Path.join(kinds, c <> ".kinds"))} end)
-
-      case Enum.find(clips, &(not match?({:ok, _}, kd[&1]))) do
-        nil ->
-          kd = Map.new(kd, fn {c, {:ok, k}} -> {c, k} end)
-          nf = fn c -> div(tuple_size(data[c]), ntg * 2) end
-          at = fn c, f, t -> {elem(data[c], (f * ntg + t) * 2), elem(data[c], (f * ntg + t) * 2 + 1)} end
-          db = clips -- bridges
-          mm = &:erlang.float_to_binary(&1 * 1000, decimals: 1)
-
-          rows =
-            targets
-            |> Enum.with_index()
-            |> Enum.map(fn {name, t} ->
-              [b, fs] = String.split(name, "@")
-              fb = String.to_integer(fs)
-              kt = elem(kd[b], fb)
-              same = for c <- db, f <- 0..(nf.(c) - 1), elem(kd[c], f) == kt, do: {c, f}
-              cands = if same == [], do: for(c <- db, f <- 0..(nf.(c) - 1), do: {c, f}), else: same
-              {c, f} = Enum.min_by(cands, fn {c, f} -> elem(at.(c, f, t), 1) end)
-              {mx, mean} = at.(c, f, t)
-              off = if f + 1 < nf.(c), do: f + 1, else: f - 1
-              {omx, omean} = at.(c, off, t)
-              {smx, _} = at.(b, fb, t)
-              ok = omean > mean and smx == 0.0
-              side = if fb == 0, do: "into", else: "out of"
-
-              %{ok: ok,
-                cols: [name, kt, "#{c}@#{f}", mm.(mx), mm.(mean), "#{c}@#{off}", mm.(omx), mm.(omean), mm.(smx)],
-                line: "JOIN #{side} #{b} (#{name}, kind #{kt}) <-> #{c}@#{f}: max #{mm.(mx)} mean #{mm.(mean)} mm; " <>
-                      "one frame off #{c}@#{off}: max #{mm.(omx)} mean #{mm.(omean)} mm #{if omean > mean, do: "larger as it must", else: "NOT larger"}; " <>
-                      "self #{mm.(smx)} mm"}
-            end)
-
-          {:ok, rows}
-
-        c ->
-          {:error, "no kinds for #{c}"}
-      end
-    end
-  end
 
   defp embed(ctx, tsv, out) do
     with {:ok, text} <- File.read(tsv) do

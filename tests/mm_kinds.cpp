@@ -43,6 +43,7 @@ int main(int argc, char **argv) {
 		return 2;
 	}
 	mm::Database db;
+	std::string support_names;
 	for (int i = 2; i < argc; ++i) {
 		std::vector<std::string> names;
 		std::vector<int32_t> parents;
@@ -51,6 +52,12 @@ int main(int argc, char **argv) {
 		const std::string path = argv[i];
 		if (!read_clip(path, names, parents, xf, fps)) {
 			continue;
+		}
+		if (support_names.empty()) {
+			auto at = [&](const char *n) { return int(std::find(names.begin(), names.end(), n) - names.begin()); };
+			for (int s : mm::Database::support_joints(parents, {at(db.bone_names[0].c_str()), at(db.bone_names[1].c_str())}, at("Head"))) {
+				support_names += (support_names.empty() ? "" : ",") + names[size_t(s)];
+			}
 		}
 		const bool loop = std::ifstream(path + "/loop.txt").good();
 		db.add_clip(path.substr(path.find_last_of('/') + 1), names, parents, xf, fps, loop);
@@ -63,5 +70,57 @@ int main(int argc, char **argv) {
 		}
 	}
 	std::printf("KINDS clips=%zu standing_head=%.3f\n", db.clips.size(), double(db.standing_head));
-	return 0;
+	std::printf("SUPPORT joints=%s contact_height=%.4f m (90th percentile of %zu planted-foot heights above the clip ground)\n",
+			support_names.c_str(), double(db.contact_height), db.planted_samples);
+	// Each clip's kinds with the knees and hands as support (written above) against the feet alone.
+	std::vector<std::vector<uint8_t>> with;
+	for (const mm::Clip &c : db.clips) {
+		with.push_back(c.kind);
+	}
+	db.settings.hand_support = false;
+	db.classify();
+	std::vector<std::vector<uint8_t>> feet_only;
+	for (const mm::Clip &c : db.clips) {
+		feet_only.push_back(c.kind);
+	}
+	auto counts = [](const std::vector<uint8_t> &k) {
+		int n[6] = {0, 0, 0, 0, 0, 0};
+		for (uint8_t x : k) {
+			++n[x];
+		}
+		char b[96];
+		std::snprintf(b, sizeof b, "stand %d crouch %d crawl %d air %d between %d", n[0], n[1], n[2], n[4], n[5]);
+		return std::string(b);
+	};
+	size_t changed = 0;
+	for (size_t i = 0; i < db.clips.size(); ++i) {
+		size_t d = 0;
+		for (size_t f = 0; f < with[i].size(); ++f) {
+			d += with[i][f] != feet_only[i][f];
+		}
+		changed += d;
+		if (d > 0) {
+			std::printf("KINDS-CHANGED %s %zu frames: feet only [%s] -> with knees and hands [%s]\n", db.clips[i].name.c_str(), d,
+					counts(feet_only[i]).c_str(), counts(with[i]).c_str());
+		}
+	}
+	// Control: every knee and hand lifted 0.5 m in every frame; no frame may stay carried, so the
+	// kinds must come out exactly as with the feet alone. A contact test that ignored the height
+	// would keep the support labels and pass the frames it should fail.
+	db.settings.hand_support = true;
+	for (mm::Clip &c : db.clips) {
+		for (float &y : c.support_y) {
+			y += 0.5f;
+		}
+	}
+	db.classify();
+	size_t kept = 0;
+	for (size_t i = 0; i < db.clips.size(); ++i) {
+		for (size_t f = 0; f < feet_only[i].size(); ++f) {
+			kept += db.clips[i].kind[f] != feet_only[i][f];
+		}
+	}
+	std::printf("SUPPORT-CONTROL lifted 0.5 m: %zu of %zu support-changed frames keep a support label (%s)\n", kept, changed,
+			kept == 0 ? "the support labels FAIL as they must" : "BROKEN");
+	return kept == 0 ? 0 : 1;
 }
