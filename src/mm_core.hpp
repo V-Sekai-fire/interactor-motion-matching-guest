@@ -163,6 +163,10 @@ struct Clip {
 	std::vector<float> yaw;
 	std::vector<v3> bones; // frames x bone_count
 	std::vector<float> head_y;
+	// Per frame, the heights of the joints that can carry the body besides the feet (the knees
+	// and the hands, found by role in add_clip): frames x supports.
+	int supports = 0;
+	std::vector<float> support_y;
 	// Per frame, from bake(): the pose's kind (see Mode) and, for a jump take-off, the frame where
 	// the jump lands.
 	std::vector<uint8_t> kind;
@@ -184,7 +188,9 @@ struct Clip {
 
 // What the controller asks for. A pose's kind comes from its shape: the head's height against a
 // standing head (stand above 82%, crouch down to 45%, crawl below), and Air when both feet are
-// off the ground. Jump is asked once: it plays a take-off pose and the jump through to landing.
+// off the ground and no knee or hand is on it either (a crawl on hands and knees with the feet
+// raised is carried, not flying). Jump is asked once: it plays a take-off pose and the jump
+// through to landing.
 // Between marks a short stretch of one kind inside another (a bend while walking, the stand-up of
 // a crawl): it is played through but never matched.
 enum Mode : uint8_t { Stand = 0, Crouch = 1, Crawl = 2, Jump = 3, Air = 4, Between = 5 };
@@ -214,6 +220,7 @@ struct Settings {
 	float phase_tol = 0.06f;       // a switch between two cycling poses keeps the phase this close (0: off)
 	float strike_feet = 0.05f;     // a foot this near the clip's ground, and
 	float strike_speed = 0.5f;     // this slow on the floor (m/s), is planted
+	bool hand_support = true;      // knees and hands on the floor carry the body (classify)
 	float min_cycle = 0.4f, max_cycle = 2.0f; // a gait cycle lasts this long
 };
 
@@ -246,7 +253,9 @@ public:
 			want.push_back(int(it - names.begin()));
 		}
 		const int hips = want.back();
+		const std::vector<int> sup = support_joints(parents, {want[0], want[1]}, int(head));
 		Clip c;
+		c.supports = int(sup.size());
 		c.name = name;
 		c.fps = fps;
 		c.frames = int(xf.size() / (J * 12));
@@ -275,6 +284,9 @@ public:
 				c.bones.push_back(gp[size_t(b)]);
 			}
 			c.head_y.push_back(gp[head].y);
+			for (int s : sup) {
+				c.support_y.push_back(gp[size_t(s)].y);
+			}
 		}
 		// The facing is averaged over facing_smooth seconds each side, whatever the clip's rate:
 		// whole frames inside the window, and the frame just past each edge by the part of it
@@ -419,6 +431,43 @@ public:
 		}
 	}
 
+	// The joints besides the feet that can carry the body, found by role from the skeleton's tree
+	// (no names): the knee is each foot's parent; the trunk is the chain from the root to the head;
+	// an arm is a chain hanging off the trunk below the head that holds no foot, and its hand is
+	// the first joint where the chain branches (into fingers), or its end when it never does.
+	static std::vector<int> support_joints(const std::vector<int32_t> &parents, const std::vector<int> &feet, int head) {
+		const size_t J = parents.size();
+		std::vector<int> out;
+		std::vector<char> trunk(J, 0), leg(J, 0);
+		for (int j = head; j >= 0; j = parents[size_t(j)]) {
+			trunk[size_t(j)] = 1;
+		}
+		for (int ft : feet) {
+			out.push_back(parents[size_t(ft)]);
+			for (int j = ft; j >= 0; j = parents[size_t(j)]) {
+				leg[size_t(j)] = 1;
+			}
+		}
+		std::vector<std::vector<int>> kids(J);
+		for (size_t j = 0; j < J; ++j) {
+			if (parents[j] >= 0) {
+				kids[size_t(parents[j])].push_back(int(j));
+			}
+		}
+		for (size_t j = 0; j < J; ++j) {
+			const int p = parents[j];
+			if (p < 0 || p == head || !trunk[size_t(p)] || trunk[j] || leg[j]) {
+				continue;
+			}
+			int h = int(j);
+			while (kids[size_t(h)].size() == 1) {
+				h = kids[size_t(h)][0];
+			}
+			out.push_back(h);
+		}
+		return out;
+	}
+
 	// Each pose's kind, and the jumps' take-offs (see Mode).
 	void classify() {
 		std::vector<float> heads;
@@ -428,20 +477,64 @@ public:
 		std::sort(heads.begin(), heads.end());
 		standing_head = heads.empty() ? 1.6f : heads[heads.size() * 9 / 10];
 		const size_t B = bone_names.size();
-		for (Clip &c : clips) {
+		// Each clip's ground: its lowest foot's 10th percentile over the clip.
+		std::vector<std::vector<float>> lows(clips.size());
+		std::vector<float> grounds(clips.size());
+		for (size_t ci = 0; ci < clips.size(); ++ci) {
+			const Clip &c = clips[ci];
 			const size_t F = size_t(c.frames);
-			std::vector<float> low(F);
+			lows[ci].resize(F);
 			for (size_t f = 0; f < F; ++f) {
-				low[f] = std::min(c.bones[f * B + 0].y, c.bones[f * B + 1].y); // LeftFoot, RightFoot
+				lows[ci][f] = std::min(c.bones[f * B + 0].y, c.bones[f * B + 1].y); // LeftFoot, RightFoot
 			}
-			std::vector<float> s = low;
+			std::vector<float> s = lows[ci];
 			std::sort(s.begin(), s.end());
-			const float ground = s[s.size() / 10];
+			grounds[ci] = s[s.size() / 10];
+		}
+		// How high above its clip's ground a joint that bears weight sits, from the feet: over every
+		// frame that the foot rule calls Stand (head at standing height, a foot down), each foot
+		// that is still (speed below strike_speed, the planted rule without its height test, since
+		// the height is what is measured), its height above the ground. The bound is the 90th
+		// percentile, the same 10% tail the ground drops. A knee or hand at most this high above
+		// the ground is on the floor: a wrist or knee centre on the floor sits lower than an ankle
+		// centre, so it is in contact whenever it is no higher than a planted ankle.
+		std::vector<float> planted;
+		for (size_t ci = 0; ci < clips.size(); ++ci) {
+			const Clip &c = clips[ci];
+			for (int f = 0; f < c.frames; ++f) {
+				if (c.head_y[size_t(f)] / standing_head < settings.crouch_head || lows[ci][size_t(f)] > grounds[ci] + settings.air_feet) {
+					continue;
+				}
+				for (size_t b = 0; b < 2; ++b) {
+					const v3 v = bone_velocity(c, b, f);
+					if (std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z) < settings.strike_speed) {
+						planted.push_back(c.bones[size_t(f) * B + b].y - grounds[ci]);
+					}
+				}
+			}
+		}
+		std::sort(planted.begin(), planted.end());
+		contact_height = planted.empty() ? 0.0f : planted[planted.size() * 9 / 10];
+		planted_samples = planted.size();
+		for (size_t ci = 0; ci < clips.size(); ++ci) {
+			Clip &c = clips[ci];
+			const size_t F = size_t(c.frames);
+			const std::vector<float> &low = lows[ci];
+			const float ground = grounds[ci];
+			const size_t S = size_t(c.supports);
+			auto carried = [&](size_t f) {
+				for (size_t s = 0; settings.hand_support && s < S; ++s) {
+					if (c.support_y[f * S + s] <= ground + contact_height) {
+						return true;
+					}
+				}
+				return false;
+			};
 			c.kind.assign(F, Stand);
 			c.lands.assign(F, -1);
 			for (size_t f = 0; f < F; ++f) {
 				const float h = c.head_y[f] / standing_head;
-				if (low[f] > ground + settings.air_feet) {
+				if (low[f] > ground + settings.air_feet && !carried(f)) {
 					c.kind[f] = Air;
 				} else if (h < settings.crawl_head) {
 					c.kind[f] = Crawl;
@@ -748,6 +841,10 @@ public:
 	std::vector<int> mode_rows[kModes];
 	std::unique_ptr<KDTree> mode_tree[kModes];
 	float standing_head = 1.6f;
+	// From classify(): how high above its clip's ground a planted foot sits (90th percentile of
+	// planted_samples), the bound for a knee or hand on the floor.
+	float contact_height = 0.0f;
+	size_t planted_samples = 0;
 };
 
 // MMCharacter without a physics body: a velocity spring predicts the trajectory; the character
