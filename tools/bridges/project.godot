@@ -1,0 +1,11 @@
+config_version=5
+
+[application]
+
+config/name="kimodo bridges"
+run/main_scene="res://gen.tscn"
+
+[sandbox]
+
+toolchain/docker_enabled=false
+binary_translation/enabled=false

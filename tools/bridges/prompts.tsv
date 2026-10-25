@@ -1,0 +1,7 @@
+stand_to_crawl	A person stands still, then kneels down, puts both hands on the floor and stays on hands and knees.
+crawl_to_stand	A person is on hands and knees, then pushes up off the floor and stands up straight and stays standing.
+crouch_to_crawl	A person crouches low, then puts both hands on the floor and crawls forward on hands and knees.
+crawl_to_crouch	A person crawls forward on hands and knees, then lifts both hands off the floor into a low crouch and stays crouching.
+crouch_to_stand	A person crouches low, then stands up straight and stays standing still.
+walk_to_stand	A person walks forward, stops, and stands still facing forward.
+run_to_stand	A person runs forward, slows down, stops, and stands still facing forward.
