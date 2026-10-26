@@ -166,6 +166,10 @@ struct Clip {
 	// Per frame, from bake(): the pose's kind (see Mode) and, for a jump take-off, the frame where
 	// the jump lands.
 	std::vector<uint8_t> kind;
+	// Per frame, from bake(): the kind the clip goes on into, past this frame's run and any
+	// Between frames after it (255: the clip ends first). A pose whose next kind is the asked
+	// mode is a way into that mode the clip itself plays.
+	std::vector<uint8_t> next_kind;
 	std::vector<int> lands;
 	// Per frame, from bake(): where the pose is in its gait cycle, 0 to 1 from one left-foot
 	// strike to the next, or -1 outside a cycle (standing, a turn on the spot, a jump).
@@ -368,6 +372,37 @@ public:
 			run_end[ci].assign(size_t(c.frames), c.frames - 1);
 			for (int f = c.frames - 2; f >= 0; --f) {
 				run_end[ci][size_t(f)] = c.kind[size_t(f)] == c.kind[size_t(f) + 1] ? run_end[ci][size_t(f) + 1] : f;
+			}
+		}
+		for (Clip &c : clips) {
+			const int F = c.frames;
+			c.next_kind.assign(size_t(F), 255);
+			// past[k][f]: the first kind after frame f that is neither k nor Between.
+			std::vector<uint8_t> past[Between + 1];
+			for (int k = 0; k <= Between; ++k) {
+				past[k].assign(size_t(F), 255);
+				for (int f = F - 2; f >= 0; --f) {
+					const uint8_t n = c.kind[size_t(f) + 1];
+					past[k][size_t(f)] = n == k || n == Between ? past[k][size_t(f) + 1] : n;
+				}
+			}
+			for (int f = 0; f < F; ++f) {
+				c.next_kind[size_t(f)] = past[c.kind[size_t(f)]][size_t(f)];
+			}
+		}
+
+		// The ways in: poses of kind `from` whose clip goes on into kind `to`.
+		for (int a = 0; a < kModes; ++a) {
+			for (int b = 0; b < kModes; ++b) {
+				entry_rows[a][b].clear();
+			}
+		}
+		for (int i = 0; i < N; ++i) {
+			const Clip &c = clips[size_t(pose_clip[size_t(i)])];
+			const int f = pose_frame[size_t(i)];
+			const int a = c.kind[size_t(f)], b = c.next_kind[size_t(f)];
+			if (a < Jump && b < Jump && a != b) {
+				entry_rows[a][b].push_back(i);
 			}
 		}
 		std::string counts;
@@ -746,6 +781,28 @@ public:
 	std::vector<int> pose_clip, pose_frame, eligible;
 	std::unique_ptr<KDTree> tree;
 	std::vector<int> mode_rows[kModes];
+	std::vector<int> entry_rows[kModes][kModes];
+	// The best way from kind `from` into kind `to` that `skip` does not refuse; -1 when the
+	// database has none.
+	template <typename Skip>
+	int search_entry(int from, int to, const float *q, Skip skip) const {
+		if (from < 0 || from >= kModes || to < 0 || to >= kModes) {
+			return -1;
+		}
+		int best = -1;
+		float bc = std::numeric_limits<float>::max();
+		for (int i : entry_rows[from][to]) {
+			if (skip(pose_clip[size_t(i)], float(pose_frame[size_t(i)]) / clips[size_t(pose_clip[size_t(i)])].fps)) {
+				continue;
+			}
+			const float c = cost(i, q);
+			if (c < bc) {
+				bc = c;
+				best = i;
+			}
+		}
+		return best;
+	}
 	std::unique_ptr<KDTree> mode_tree[kModes];
 	float standing_head = 1.6f;
 };
@@ -936,7 +993,13 @@ struct Controller {
 		const bool at_end = !c.loop && time >= float(c.frames - 1) / c.fps - 1e-4f;
 		// A pose of another kind than asked (standing while crouch is asked) always gives way.
 		const int want = db->has_mode(mode) ? mode : int(Stand);
-		const bool wrong_kind = c.kind[size_t(now_f)] != want;
+		// A clip on its way into the asked kind (through its own get-down or get-up) plays on.
+		const int now_kind = c.kind[size_t(now_f)];
+		const bool on_the_way = now_kind != want && c.next_kind[size_t(now_f)] == want;
+		const bool wrong_kind = now_kind != want && !on_the_way;
+		if (on_the_way) {
+			return false;
+		}
 		int bc = db->pose_clip[size_t(best)];
 		float bt = float(db->pose_frame[size_t(best)]) / db->clips[size_t(bc)].fps;
 		// A gait cycle is cyclic: going back in time, or to another clip, is a join only at the
@@ -954,6 +1017,15 @@ struct Controller {
 			}
 			return tol > 0 && Database::phase_gap(now_phase, k.phase[size_t(f)]) > tol;
 		};
+		// Asked for another kind: go in through a clip that makes the change itself, when one has it.
+		if (wrong_kind) {
+			const int way = db->search_entry(now_kind, want, q.data(), out_of_phase);
+			if (way >= 0) {
+				best = way;
+				bc = db->pose_clip[size_t(best)];
+				bt = float(db->pose_frame[size_t(best)]) / db->clips[size_t(bc)].fps;
+			}
+		}
 		if (out_of_phase(bc, bt)) {
 			if (!at_end && !wrong_kind) {
 				return false;
