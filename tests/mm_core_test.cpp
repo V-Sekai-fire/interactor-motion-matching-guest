@@ -1,7 +1,7 @@
 #include <algorithm>
 // Native checks of mm_core.hpp on real Kimodo SOMA30 clips (a directory of
 // <key>/transforms.f32 + skeleton.txt + parents.txt as motion.elf's chain runner writes them).
-//   mm_core_test <clips dir> [--plant-kd] [--plant-phase] [--plant-no-prone]
+//   mm_core_test <clips dir> [--plant-kd] [--plant-phase] [--plant-no-prone] [--plant-jump-len]
 // 1. The k-d tree finds the same cost as a brute-force scan on 500 queries (database rows plus
 //    noise). --plant-kd skips the far branch, which must make this check fail.
 // 2. Every 50th pose, queried with its own features, finds a pose of cost 0.
@@ -53,10 +53,11 @@ int main(int argc, char **argv) {
 		std::fprintf(stderr, "usage: mm_core_test <clips dir> [--plant-kd]\n");
 		return 2;
 	}
-	bool plant = false, plant_no_prone = false, plant_phase = false, foot_phase = false, plant_rate = false;
+	bool plant = false, plant_jump_len = false, plant_no_prone = false, plant_phase = false, foot_phase = false, plant_rate = false;
 	for (int i = 2; i < argc; ++i) {
 		plant = plant || std::string(argv[i]) == "--plant-kd";
 		plant_phase = plant_phase || std::string(argv[i]) == "--plant-phase";
+		plant_jump_len = plant_jump_len || std::string(argv[i]) == "--plant-jump-len"; // the jump asks for no length: it must not clear the gap
 		plant_no_prone = plant_no_prone || std::string(argv[i]) == "--plant-no-prone"; // no pose is prone: the prone case must fail
 		plant_rate = plant_rate || std::string(argv[i]) == "--plant-rate"; // twins read at the wrong rate
 		foot_phase = foot_phase || std::string(argv[i]) == "--foot-phase"; // ignore phase.f32
@@ -296,6 +297,25 @@ int main(int argc, char **argv) {
 		const bool ok = joins > 0 && off == 0 && dist > 0.6f * speed * 60 && dist < 1.25f * speed * 60;
 		std::printf("PHASE %s speed=%.1f joins=%d back_in_clip=%d out_of_phase=%d worst=%.3f wraps=%d switches=%d travel=%.1f m\n",
 				ok ? "PASS" : "FAIL", double(speed), joins, backs, off, double(worst), ctl.wraps, ctl.switches, double(dist));
+		fails += ok ? 0 : 1;
+	}
+	// 4b. A jump of a requested length: from a run, a jump that must fly 1.05 m (a 0.8 m gap and a foot) takes off from a pose
+	// whose flight is at least that long. The control asks for no length and gets the best fitting take-off, a shorter hop.
+	if (db.has_mode(mm::Jump)) {
+		const float want_len = 1.05f;
+		mm::Controller ctl;
+		ctl.db = &db;
+		ctl.reset({}, 0, 0);
+		const float dt = 1.0f / 60;
+		for (int i = 0; i < 60 * 3; ++i) {
+			ctl.update(dt, mm::v3{ 0, 0, 3.0f }, std::numeric_limits<float>::quiet_NaN(), mm::Stand, false);
+		}
+		ctl.update(dt, mm::v3{ 0, 0, 3.0f }, std::numeric_limits<float>::quiet_NaN(), mm::Stand, true, plant_jump_len ? 0.0f : want_len);
+		const mm::Clip &jc = db.clips[size_t(ctl.clip)];
+		const float len = jc.jump_len[size_t(std::clamp(int(std::lround(ctl.time * jc.fps)), 0, jc.frames - 1))];
+		const bool ok = ctl.jumping() && len >= want_len;
+		std::printf("JUMPLEN %s asked=%.2f m flight=%.2f m clip=%s%s\n", ok ? "PASS" : "FAIL", double(plant_jump_len ? 0.0f : want_len), double(len),
+				jc.name.c_str(), plant_jump_len ? " [control: no length asked]" : "");
 		fails += ok ? 0 : 1;
 	}
 	// 5. Mixed rates (RFD66606-2327): a clip at 60 fps and its own every-second frame as a 30 fps clip

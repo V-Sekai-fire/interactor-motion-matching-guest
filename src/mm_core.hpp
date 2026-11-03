@@ -185,6 +185,8 @@ struct Clip {
 	// the jump lands.
 	std::vector<uint8_t> kind;
 	std::vector<int> lands;
+	// For the same frames: the ground distance (m) the jump covers in the air, from the last frame on the ground to the landing.
+	std::vector<float> jump_len;
 	// Per frame, from bake(): where the pose is in its gait cycle, 0 to 1 from one left-foot
 	// strike to the next, or -1 outside a cycle (standing, a turn on the spot, a jump).
 	std::vector<float> phase;
@@ -557,6 +559,7 @@ public:
 			};
 			c.kind.assign(F, Stand);
 			c.lands.assign(F, -1);
+			c.jump_len.assign(F, 0.0f);
 			for (size_t f = 0; f < F; ++f) {
 				const float h = c.head_y[f] / standing_head;
 				if (low[f] > ground + settings.air_feet && !carried(f)) {
@@ -589,9 +592,12 @@ public:
 				if (long_enough && lands_in_clip) {
 					const long from = long(a) - long(std::lround(settings.takeoff_from * c.fps));
 					const long to = long(a) - long(std::lround(settings.takeoff_to * c.fps));
+					const float flight_dx = c.root[b].x - c.root[a].x, flight_dz = c.root[b].z - c.root[a].z;
+					const float flight = std::sqrt(flight_dx * flight_dx + flight_dz * flight_dz);
 					for (long f = std::max(0L, from); f <= to; ++f) {
 						if (c.kind[size_t(f)] != Air) {
 							c.lands[size_t(f)] = int(b);
+							c.jump_len[size_t(f)] = flight;
 						}
 					}
 				}
@@ -1025,7 +1031,26 @@ struct Controller {
 			return false;
 		}
 		const std::vector<float> q = query();
-		const int best = db->search_mode(Jump, q.data());
+		int best = db->search_mode(Jump, q.data());
+		if (jump_min_len > 0.0f) {
+			// A jump of at least that length (a gap to clear): the best fitting take-off whose flight is long enough; when
+			// none is, the one that flies farthest.
+			auto len_at = [&](int clip_index, float t) {
+				const Clip &jc = db->clips[size_t(clip_index)];
+				return jc.jump_len[size_t(std::clamp(int(std::lround(t * jc.fps)), 0, jc.frames - 1))];
+			};
+			best = db->search_mode_except(Jump, q.data(), [&](int ci, float t) { return len_at(ci, t) < jump_min_len; });
+			if (best < 0) {
+				float far = -1.0f;
+				for (int i : db->mode_rows[Jump]) {
+					const float l = len_at(db->pose_clip[size_t(i)], float(db->pose_frame[size_t(i)]) / db->clips[size_t(db->pose_clip[size_t(i)])].fps);
+					if (l > far) {
+						far = l;
+						best = i;
+					}
+				}
+			}
+		}
 		if (best < 0) {
 			return false;
 		}
@@ -1106,7 +1131,10 @@ struct Controller {
 
 	v3 desired_cache;
 	float facing_cache = std::numeric_limits<float>::quiet_NaN();
-	bool update(float dt, v3 desired, float facing_yaw, int want_mode = Stand, bool want_jump = false) {
+	// want_jump_len: with want_jump, the shortest flight (m) the jump must cover; 0 takes the best fitting take-off.
+	float jump_min_len = 0.0f;
+	bool update(float dt, v3 desired, float facing_yaw, int want_mode = Stand, bool want_jump = false, float want_jump_len = 0.0f) {
+		jump_min_len = want_jump_len;
 		desired_cache = desired;
 		facing_cache = facing_yaw;
 		if (want_mode != mode && ((want_mode >= Stand && want_mode <= Crawl) || want_mode == Prone)) {

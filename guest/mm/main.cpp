@@ -17,7 +17,7 @@
 //                                                SOMA metres, world), facing = strafe yaw or
 //                                                NaN to face the way it moves, mode 0 stand /
 //                                                1 crouch / 2 crawl / 6 prone, jump 1 on the frame it is
-//                                                pressed -> 15 floats:
+//                                                pressed (N > 1: a jump that flies at least N centimetres) -> 15 floats:
 //     clip, time, char_x, char_z, char_yaw, root_x, root_z, root_yaw, switched, cost,
 //     sim_x, sim_z, sim_yaw, pose kind (0 stand 1 crouch 2 crawl 4 air 6 prone), jumping
 //   mm_modes()                                   per mode: name poses median_moving_speed
@@ -112,7 +112,7 @@ static Variant mm_reset(double x, double z, double yaw, int64_t clip) {
 static Variant mm_step(double dt, double vx, double vz, double facing, int64_t mode, int64_t jump) {
 	std::vector<float> out;
 	if (g_baked) {
-		const bool sw = g_ctl.update(float(dt), mm::v3{ float(vx), 0, float(vz) }, float(facing), int(mode), jump != 0);
+		const bool sw = g_ctl.update(float(dt), mm::v3{ float(vx), 0, float(vz) }, float(facing), int(mode), jump != 0, jump > 1 ? float(jump) / 100.0f : 0.0f);
 		const mm::Clip &c = g_db.clips[size_t(g_ctl.clip)];
 		const mm::v3 r = mm::Database::sample_root(c, g_ctl.time);
 		const int f = std::clamp(int(std::lround(g_ctl.time * c.fps)), 0, c.frames - 1);
