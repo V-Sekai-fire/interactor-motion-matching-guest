@@ -13,7 +13,7 @@ trajectory. `src/mm_core.hpp` holds the algorithm; `guest/mm/main.cpp` is only t
 with Kimodo (interactor-motion-guest's `motion.elf`, Kimodo-SOMA-RP-v1.1, 50 steps, seed 1171)
 from the prompts in `data/kimodo-locomotion/prompts.tsv`: standing, walking at three speeds,
 jogging, running, curves, circles, zigzag, walking back, side steps, turns in place, starts,
-stops, speed changes, sustained jogs and runs, a deep crouch walk and two belly crawls (flat on the stomach, head about 0.13 to 0.15 m up). They are the output of a program; no person recorded them.
+stops, speed changes, sustained jogs and runs, a deep crouch walk and two belly crawls that travel (military and leopard crawl: flat on the stomach, hips 0.13 to 0.21 m, 1.6 to 1.9 m of travel in 10 s). They are the output of a program; no person recorded them.
 
 `data/o3de-motionmatching/` holds 21 motion-capture clips of the
 [O3DE MotionMatching gem](https://github.com/o3de/o3de/tree/development/Gems/MotionMatching/Assets/Animations)

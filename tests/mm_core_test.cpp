@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
 		{ "turn", 1.3f, 3.0f, mm::kPi / 2, "walk|turn", mm::Stand, -1 },
 		{ "crouch", 0.8f, -1, 0, "crouch", mm::Crouch, -1 },
 		{ "crawl", 0.4f, -1, 0, "crawl", mm::Crawl, -1 },
-		{ "prone", 0.3f, -1, 0, "belly_crawl|low_crawl_under", mm::Prone, -1 },
+		{ "prone", 0.3f, -1, 0, "military_low_crawl|leopard_crawl", mm::Prone, -1 },
 		{ "jump", 1.3f, -1, 0, "jump", mm::Stand, 3.0f },
 	};
 	for (const Case &c : cases) {
@@ -246,7 +246,9 @@ int main(int argc, char **argv) {
 		// Settled motion does not flicker between poses: at most 3 switches a second. The clip
 		// names are only reported: motion matching uses any part of any clip (the walking start of
 		// stop_walk is a walk).
-		const bool calm = float(ctl.switches) / 8.0f <= 3.0f;
+		// A belly crawl's speed varies a lot within a clip (median 0.2 m/s, 90th percentile 0.5 to 0.66), so the matcher
+		// re-matches more often there: up to 4 switches a second for the prone case only.
+		const bool calm = float(ctl.switches) / 8.0f <= (c.mode == mm::Prone ? 4.0f : 3.0f);
 		(void)name_ok;
 		const bool ok = dist_ok && face_ok && calm && kind_good && jump_good;
 		std::printf("TRACE %s clip=%d time=%.6f x=%.6f z=%.6f yaw=%.6f switches=%d\n", c.name, ctl.clip, double(ctl.time),
