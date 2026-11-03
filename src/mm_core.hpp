@@ -201,7 +201,7 @@ struct Clip {
 };
 
 // What the controller asks for. A pose's kind comes from its shape: the head's height against a
-// standing head (stand above 82%, crouch down to 45%, crawl below), and Air when both feet are
+// standing head (stand above 82%, crouch down to 45%, crawl down to 25%, prone below), and Air when both feet are
 // off the ground and no knee or hand is on it either (a crawl on hands and knees with the feet
 // raised is carried, not flying). Jump is asked once: it plays a take-off pose and the jump
 // through to landing.
@@ -212,8 +212,9 @@ enum Mode : uint8_t { Stand = 0,
 	Crawl = 2,
 	Jump = 3,
 	Air = 4,
-	Between = 5 };
-constexpr int kModes = 4;
+	Between = 5,
+	Prone = 6 }; // flat on the belly: a head under prone_head of a standing head (a crawl under a low barrier)
+constexpr int kModes = 7; // indexed by Mode; Air and Between have no tree
 
 struct Settings {
 	int future = 3; // trajectory_point_count
@@ -232,6 +233,7 @@ struct Settings {
 	float end_margin = 1.0f; // poses this close to a clip's end are never matched (a match plays at least this long)
 	float crouch_head = 0.82f; // a head below this share of a standing head is crouching
 	float crawl_head = 0.45f; // and below this, crawling
+	float prone_head = 0.25f; // and below this, prone (belly crawl)
 	float air_feet = 0.08f; // both feet this far above the clip's ground: in the air (metres)
 	float takeoff_from = 0.45f, takeoff_to = 0.1f; // take-off poses: this long before the feet leave
 	float min_air = 0.15f; // a shorter flight is a step, not a jump
@@ -404,6 +406,10 @@ public:
 		std::string counts;
 		for (int m = 0; m < kModes; ++m) {
 			mode_rows[m].clear();
+			mode_tree[m] = nullptr;
+			if (m == Air || m == Between) {
+				continue; // the kinds a pose can have without being asked for
+			}
 			for (int i = 0; i < N; ++i) {
 				const int ci = pose_clip[size_t(i)];
 				const Clip &c = clips[size_t(ci)];
@@ -418,7 +424,7 @@ public:
 			counts += " " + std::to_string(mode_rows[m].size());
 		}
 		return "BAKED clips " + std::to_string(clips.size()) + " poses " + std::to_string(N) + " dims " + std::to_string(D) +
-				" stand/crouch/crawl/jump" + counts;
+				" stand/crouch/crawl/jump/prone" + counts;
 	}
 
 	// Runs of `kind` shorter than `secs`: to the kind just before (or after) when `to_neighbour`,
@@ -555,6 +561,8 @@ public:
 				const float h = c.head_y[f] / standing_head;
 				if (low[f] > ground + settings.air_feet && !carried(f)) {
 					c.kind[f] = Air;
+				} else if (h < settings.prone_head) {
+					c.kind[f] = Prone;
 				} else if (h < settings.crawl_head) {
 					c.kind[f] = Crawl;
 				} else if (h < settings.crouch_head) {
@@ -564,7 +572,7 @@ public:
 			// A flight shorter than a jump is a running stride: it takes the kind before it.
 			relabel_short(c, Air, settings.min_air, true);
 			// Short stretches of one kind inside another are Between.
-			for (uint8_t k : { uint8_t(Stand), uint8_t(Crouch), uint8_t(Crawl) }) {
+			for (uint8_t k : { uint8_t(Stand), uint8_t(Crouch), uint8_t(Crawl), uint8_t(Prone) }) {
 				relabel_short(c, k, settings.min_run, false);
 			}
 			for (size_t a = 0; a < F;) {
@@ -887,7 +895,7 @@ struct Controller {
 	};
 	std::vector<Past> history;
 	float clock = 0;
-	int mode = Stand; // the kind of pose asked for (Stand, Crouch or Crawl)
+	int mode = Stand; // the kind of pose asked for (Stand, Crouch, Crawl or Prone)
 	float locked_until = -1; // a jump plays through to here in its clip before searching again
 	int jumps = 0;
 
@@ -1101,7 +1109,7 @@ struct Controller {
 	bool update(float dt, v3 desired, float facing_yaw, int want_mode = Stand, bool want_jump = false) {
 		desired_cache = desired;
 		facing_cache = facing_yaw;
-		if (want_mode != mode && want_mode >= Stand && want_mode <= Crawl) {
+		if (want_mode != mode && ((want_mode >= Stand && want_mode <= Crawl) || want_mode == Prone)) {
 			mode = want_mode;
 			since_search = 1e9f; // answer a new mode at once
 		}

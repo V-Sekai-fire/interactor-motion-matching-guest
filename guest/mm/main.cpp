@@ -16,10 +16,10 @@
 //   mm_step(dt, vx, vz, facing, mode, jump)      one frame: the wanted ground velocity (m/s,
 //                                                SOMA metres, world), facing = strafe yaw or
 //                                                NaN to face the way it moves, mode 0 stand /
-//                                                1 crouch / 2 crawl, jump 1 on the frame it is
+//                                                1 crouch / 2 crawl / 6 prone, jump 1 on the frame it is
 //                                                pressed -> 15 floats:
 //     clip, time, char_x, char_z, char_yaw, root_x, root_z, root_yaw, switched, cost,
-//     sim_x, sim_z, sim_yaw, pose kind (0 stand 1 crouch 2 crawl 4 air), jumping
+//     sim_x, sim_z, sim_yaw, pose kind (0 stand 1 crouch 2 crawl 4 air 6 prone), jumping
 //   mm_modes()                                   per mode: name poses median_moving_speed
 //   The host places the rig so the clip's root at `time` (root_*) lands on the character
 //   (char_*): model = T(char) Ry(char_yaw) Ry(-root_yaw) T(-root).
@@ -123,13 +123,16 @@ static Variant mm_step(double dt, double vx, double vz, double facing, int64_t m
 	return Variant(PackedArray<float>(out));
 }
 
-// Per mode (stand, crouch, crawl, jump): pose count and the median ground speed of its moving
+// Per mode (stand, crouch, crawl, jump, prone): pose count and the median ground speed of its moving
 // poses (m/s), so the host asks for speeds the clips have.
 static Variant mm_modes() {
 	std::string out;
 	char line[128];
-	const char *names[] = { "stand", "crouch", "crawl", "jump" };
+	const char *names[] = { "stand", "crouch", "crawl", "jump", nullptr, nullptr, "prone" };
 	for (int m = 0; m < mm::kModes; ++m) {
+		if (names[m] == nullptr) {
+			continue; // Air and Between are not asked for
+		}
 		std::vector<float> v;
 		for (int i : g_db.mode_rows[m]) {
 			const mm::Clip &c = g_db.clips[size_t(g_db.pose_clip[size_t(i)])];

@@ -49,3 +49,6 @@ jump_place	A person jumps up in place several times.
 jump_forward	A person jumps forward several times.
 walk_jump	A person walks forward and jumps, then keeps walking.
 run_jump	A person runs forward and jumps, then keeps running.
+deep_crouch_walk	A person walks forward in a very deep crouch, knees bent far, back bent forward, keeping their head low.
+military_low_crawl	A soldier does a military low crawl: flat on their stomach, they drag themselves steadily forward along the ground with their forearms and legs, covering a long distance across the floor.
+leopard_crawl	A person crawls forward low to the ground on hands and feet with their belly just above the floor, travelling steadily forward across the ground, head and back kept low.

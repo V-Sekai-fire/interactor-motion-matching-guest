@@ -1,7 +1,7 @@
 #include <algorithm>
 // Native checks of mm_core.hpp on real Kimodo SOMA30 clips (a directory of
 // <key>/transforms.f32 + skeleton.txt + parents.txt as motion.elf's chain runner writes them).
-//   mm_core_test <clips dir> [--plant-kd] [--plant-phase]
+//   mm_core_test <clips dir> [--plant-kd] [--plant-phase] [--plant-no-prone]
 // 1. The k-d tree finds the same cost as a brute-force scan on 500 queries (database rows plus
 //    noise). --plant-kd skips the far branch, which must make this check fail.
 // 2. Every 50th pose, queried with its own features, finds a pose of cost 0.
@@ -53,16 +53,18 @@ int main(int argc, char **argv) {
 		std::fprintf(stderr, "usage: mm_core_test <clips dir> [--plant-kd]\n");
 		return 2;
 	}
-	bool plant = false, plant_phase = false, foot_phase = false, plant_rate = false;
+	bool plant = false, plant_no_prone = false, plant_phase = false, foot_phase = false, plant_rate = false;
 	for (int i = 2; i < argc; ++i) {
 		plant = plant || std::string(argv[i]) == "--plant-kd";
 		plant_phase = plant_phase || std::string(argv[i]) == "--plant-phase";
+		plant_no_prone = plant_no_prone || std::string(argv[i]) == "--plant-no-prone"; // no pose is prone: the prone case must fail
 		plant_rate = plant_rate || std::string(argv[i]) == "--plant-rate"; // twins read at the wrong rate
 		foot_phase = foot_phase || std::string(argv[i]) == "--foot-phase"; // ignore phase.f32
 	}
 	mm::Database db;
 	const float tol = db.settings.phase_tol;
 	db.settings.phase_tol = plant_phase ? 0.0f : tol;
+	db.settings.prone_head = plant_no_prone ? 0.0f : db.settings.prone_head;
 	// argv[1] may name several clip dirs, separated by ':'.
 	std::vector<std::string> keys;
 	const std::string roots = argv[1];
@@ -172,10 +174,11 @@ int main(int argc, char **argv) {
 		{ "turn", 1.3f, 3.0f, mm::kPi / 2, "walk|turn", mm::Stand, -1 },
 		{ "crouch", 0.8f, -1, 0, "crouch", mm::Crouch, -1 },
 		{ "crawl", 0.4f, -1, 0, "crawl", mm::Crawl, -1 },
+		{ "prone", 0.3f, -1, 0, "military_low_crawl|leopard_crawl", mm::Prone, -1 },
 		{ "jump", 1.3f, -1, 0, "jump", mm::Stand, 3.0f },
 	};
 	for (const Case &c : cases) {
-		if (c.mode != mm::Stand && !db.has_mode(c.mode)) {
+		if (c.mode != mm::Stand && c.mode != mm::Prone && !db.has_mode(c.mode)) { // prone has its own clips: without them it must fail, not skip
 			std::printf("CTL %s SKIP no poses of that kind\n", c.name);
 			continue;
 		}
@@ -243,7 +246,9 @@ int main(int argc, char **argv) {
 		// Settled motion does not flicker between poses: at most 3 switches a second. The clip
 		// names are only reported: motion matching uses any part of any clip (the walking start of
 		// stop_walk is a walk).
-		const bool calm = float(ctl.switches) / 8.0f <= 3.0f;
+		// A belly crawl's speed varies a lot within a clip (median 0.2 m/s, 90th percentile 0.5 to 0.66), so the matcher
+		// re-matches more often there: up to 4 switches a second for the prone case only.
+		const bool calm = float(ctl.switches) / 8.0f <= (c.mode == mm::Prone ? 4.0f : 3.0f);
 		(void)name_ok;
 		const bool ok = dist_ok && face_ok && calm && kind_good && jump_good;
 		std::printf("TRACE %s clip=%d time=%.6f x=%.6f z=%.6f yaw=%.6f switches=%d\n", c.name, ctl.clip, double(ctl.time),

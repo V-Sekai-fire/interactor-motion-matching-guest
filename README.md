@@ -9,11 +9,11 @@ trajectory. `src/mm_core.hpp` holds the algorithm; `guest/mm/main.cpp` is only t
 
 ## The motion database
 
-`data/kimodo-locomotion/` holds 36 clips at 30 fps on the SOMA skeleton (30 joints), each made 10 s long
+`data/kimodo-locomotion/` holds 39 clips at 30 fps on the SOMA skeleton (30 joints), each made 10 s long
 with Kimodo (interactor-motion-guest's `motion.elf`, Kimodo-SOMA-RP-v1.1, 50 steps, seed 1171)
 from the prompts in `data/kimodo-locomotion/prompts.tsv`: standing, walking at three speeds,
 jogging, running, curves, circles, zigzag, walking back, side steps, turns in place, starts,
-stops, speed changes and sustained jogs and runs. They are the output of a program; no person recorded them.
+stops, speed changes, sustained jogs and runs, a deep crouch walk and two belly crawls that travel (military and leopard crawl: flat on the stomach, hips 0.13 to 0.21 m, 1.6 to 1.9 m of travel in 10 s). They are the output of a program; no person recorded them.
 
 `data/o3de-motionmatching/` holds 21 motion-capture clips of the
 [O3DE MotionMatching gem](https://github.com/o3de/o3de/tree/development/Gems/MotionMatching/Assets/Animations)
@@ -50,8 +50,8 @@ learned phase in place of the foot strikes).
 ## Kinds of pose
 
 `mm_bake()` gives every pose a kind from its shape: crouching when the head is below 82% of a
-standing head, crawling below 45%, in the air when both feet leave the ground. The host asks for
-a kind (`mm_step` mode: 0 stand, 1 crouch, 2 crawl) and only poses of that kind are matched. A jump
+standing head, crawling below 45%, prone (flat on the belly, for a crawl under a low barrier) below 25%, in the air when both
+feet leave the ground. The host asks for a kind (`mm_step` mode: 0 stand, 1 crouch, 2 crawl, 6 prone) and only poses of that kind are matched. A jump
 (`mm_step` jump = 1) matches a take-off pose (0.1 to 0.45 s before the feet leave) and plays the
 jump through to its landing before the next search.
 
@@ -75,6 +75,7 @@ c++ -std=c++20 -O2 -ffp-contract=off -Isrc tests/mm_core_test.cpp -o mm_core_tes
 ./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching            # MM-CORE-PASS
 ./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-kd # must fail
 ./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-phase # must fail
+./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-no-prone # must fail
 c++ -std=c++20 -O2 -Isrc tools/make_loops.cpp -o make_loops
 ./make_loops data/kimodo-locomotion data/kimodo-locomotion/loops.txt          # cut (in place)
 ./make_loops data/kimodo-locomotion data/kimodo-locomotion/loops.txt --check  # LOOPS-OK
