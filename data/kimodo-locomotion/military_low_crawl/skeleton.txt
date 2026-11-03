@@ -1,6 +1,6 @@
 model kimodo_soma
 prompt A soldier does a military low crawl: flat on their stomach, they drag themselves steadily forward along the ground with their forearms and legs, covering a long distance across the floor.
-frames 300 fps 30.0 joints 30 steps 50 seed 1171
+frames 599 fps 60.0 joints 30 steps 50 seed 1171
 Hips
 Spine1
 Spine2

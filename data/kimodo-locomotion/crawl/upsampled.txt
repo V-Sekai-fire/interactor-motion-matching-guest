@@ -1,0 +1,1 @@
+from 30 fps, 146 frames; makima (Godot), rotations by quaternion; tools/upsample_clips.py

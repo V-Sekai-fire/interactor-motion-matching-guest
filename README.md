@@ -9,7 +9,8 @@ trajectory. `src/mm_core.hpp` holds the algorithm; `guest/mm/main.cpp` is only t
 
 ## The motion database
 
-`data/kimodo-locomotion/` holds 39 clips at 30 fps on the SOMA skeleton (30 joints), each made 10 s long
+`data/kimodo-locomotion/` holds 54 clips on the SOMA skeleton (30 joints), each made 10 s long at 30 fps and stored at 60 fps (see
+below)
 with Kimodo (interactor-motion-guest's `motion.elf`, Kimodo-SOMA-RP-v1.1, 50 steps, seed 1171)
 from the prompts in `data/kimodo-locomotion/prompts.tsv`: standing, walking at three speeds,
 jogging, running, curves, circles, zigzag, walking back, side steps, turns in place, starts,
@@ -23,13 +24,15 @@ SOMA30 by `tools/fbx_to_soma.gd` (both rest in a T-pose, Y up, facing +Z, so eac
 world rotation from rest). `Pushes1` is left out: it is the character being pushed. The clips
 keep the gem's recorded 60 fps, and each recording's opening T-pose frame is dropped.
 
-Each clip stays at the rate it was made at, so the set mixes 30 and 60 fps; nothing is
-resampled. The core works in seconds: bone velocities are central differences over 1/30 s
-each side read between frames, and the facing averages 0.25 s each side with the edge frames
-weighted by the part inside. `mm_core_test`'s RATE check holds each 60 fps clip against its
-own every-second frame read as a 30 fps clip (features within 0.25 of a spread, phase within
-0.04 of a cycle, 99th percentile); `--plant-rate` reads that twin at the wrong rate and must
-fail.
+Every clip is 60 fps. The Kimodo clips were made at 30 fps and `tools/upsample_clips.py` stores them at 60 fps with
+a modified Akima spline (as Godot's `Animation::makima_interpolate_in_time`): rotations through quaternions, offsets directly, every
+source frame kept exactly. A loop keeps its period: it gets one extra frame after its last that continues the motion, because the host
+carries the root on at the wrap. Each upsampled clip dir has `upsampled.txt` with its source rate; the tool skips a clip already at
+the target rate. The core still works in seconds (bone velocities are central differences over 1/30 s each side read between frames,
+and the facing averages 0.25 s each side with the edge frames weighted by the part inside), and `mm_add_clip` still takes a rate per
+clip, so a host reads each clip's rate from `skeleton.txt` ("frames N fps F") and passes it. `mm_core_test`'s RATE check holds each
+60 fps clip against its own every-second frame read as a 30 fps clip (features within 0.25 of a spread, phase within 0.04 of a
+cycle, 99th percentile); `--plant-rate` reads that twin at the wrong rate and must fail.
 
 ## Steady gaits are loops
 
@@ -76,6 +79,7 @@ c++ -std=c++20 -O2 -ffp-contract=off -Isrc tests/mm_core_test.cpp -o mm_core_tes
 ./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-kd # must fail
 ./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-phase # must fail
 ./mm_core_test data/kimodo-locomotion:data/o3de-motionmatching --plant-no-prone # must fail
+uv run --with numpy tools/upsample_clips.py data/kimodo-locomotion --check   # 30 -> 60 fps; without --check it rewrites the clips
 c++ -std=c++20 -O2 -Isrc tools/make_loops.cpp -o make_loops
 ./make_loops data/kimodo-locomotion data/kimodo-locomotion/loops.txt          # cut (in place)
 ./make_loops data/kimodo-locomotion data/kimodo-locomotion/loops.txt --check  # LOOPS-OK
