@@ -1,0 +1,14 @@
+#:schema https://www.schemastore.org/prek.json
+# Style gates: clang-format with InsertBraces. GitHub Actions runs them on every pull request and push to main (.github/workflows/static_checks.yml); `prek install` runs the same set locally. See https://prek.j178.dev.
+
+exclude = '^vendor/|(^|/)(slang_rt|slang-rt|third_party|thirdparty)/|_emit\.cpp$|\.gen\.cpp$'
+
+[[repos]]
+repo = "https://github.com/pre-commit/mirrors-clang-format"
+rev = "v22.1.5"
+
+# The repository's .clang-format (Godot's), which also sets InsertBraces: every block gets braces.
+[[repos.hooks]]
+id = "clang-format"
+files = '\.(c|h|cpp|hpp|cc|hh|cxx|hxx|inc)$'
+types_or = ["text"]

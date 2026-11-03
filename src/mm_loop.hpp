@@ -19,19 +19,19 @@ inline q4 quat_of(const m3 &r) {
 	q4 q;
 	if (tr > 0) {
 		const float s = std::sqrt(tr + 1.0f) * 2;
-		q = {0.25f * s, (m[7] - m[5]) / s, (m[2] - m[6]) / s, (m[3] - m[1]) / s};
+		q = { 0.25f * s, (m[7] - m[5]) / s, (m[2] - m[6]) / s, (m[3] - m[1]) / s };
 	} else if (m[0] > m[4] && m[0] > m[8]) {
 		const float s = std::sqrt(1.0f + m[0] - m[4] - m[8]) * 2;
-		q = {(m[7] - m[5]) / s, 0.25f * s, (m[1] + m[3]) / s, (m[2] + m[6]) / s};
+		q = { (m[7] - m[5]) / s, 0.25f * s, (m[1] + m[3]) / s, (m[2] + m[6]) / s };
 	} else if (m[4] > m[8]) {
 		const float s = std::sqrt(1.0f + m[4] - m[0] - m[8]) * 2;
-		q = {(m[2] - m[6]) / s, (m[1] + m[3]) / s, 0.25f * s, (m[5] + m[7]) / s};
+		q = { (m[2] - m[6]) / s, (m[1] + m[3]) / s, 0.25f * s, (m[5] + m[7]) / s };
 	} else {
 		const float s = std::sqrt(1.0f + m[8] - m[0] - m[4]) * 2;
-		q = {(m[3] - m[1]) / s, (m[2] + m[6]) / s, (m[5] + m[7]) / s, 0.25f * s};
+		q = { (m[3] - m[1]) / s, (m[2] + m[6]) / s, (m[5] + m[7]) / s, 0.25f * s };
 	}
 	const float n = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
-	return {q[0] / n, q[1] / n, q[2] / n, q[3] / n};
+	return { q[0] / n, q[1] / n, q[2] / n, q[3] / n };
 }
 
 inline m3 mat_of(const q4 &q) {
@@ -52,7 +52,7 @@ inline m3 mat_of(const q4 &q) {
 inline q4 slerp(q4 a, q4 b, float t) {
 	float d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
 	if (d < 0) {
-		b = {-b[0], -b[1], -b[2], -b[3]};
+		b = { -b[0], -b[1], -b[2], -b[3] };
 		d = -d;
 	}
 	float wa = 1 - t, wb = t;
@@ -61,9 +61,9 @@ inline q4 slerp(q4 a, q4 b, float t) {
 		wa = std::sin((1 - t) * th) / std::sin(th);
 		wb = std::sin(t * th) / std::sin(th);
 	}
-	q4 r = {a[0] * wa + b[0] * wb, a[1] * wa + b[1] * wb, a[2] * wa + b[2] * wb, a[3] * wa + b[3] * wb};
+	q4 r = { a[0] * wa + b[0] * wb, a[1] * wa + b[1] * wb, a[2] * wa + b[2] * wb, a[3] * wa + b[3] * wb };
 	const float n = std::sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2] + r[3] * r[3]);
-	return {r[0] / n, r[1] / n, r[2] / n, r[3] / n};
+	return { r[0] / n, r[1] / n, r[2] / n, r[3] / n };
 }
 
 // Degrees between two rotations.
@@ -111,7 +111,7 @@ inline Frames frames_of(const std::vector<float> &xf, const std::vector<int32_t>
 			m3 r;
 			std::copy(o, o + 9, r.m);
 			c.rot.push_back(r);
-			c.pos.push_back({o[9], o[10], o[11]});
+			c.pos.push_back({ o[9], o[10], o[11] });
 		}
 	}
 	return c;
@@ -124,7 +124,7 @@ inline std::vector<float> floats_of(const Frames &c) {
 			const m3 &r = c.r(f, j);
 			xf.insert(xf.end(), r.m, r.m + 9);
 			const v3 &t = c.p(f, j);
-			xf.insert(xf.end(), {t.x, t.y, t.z});
+			xf.insert(xf.end(), { t.x, t.y, t.z });
 		}
 	}
 	return xf;
@@ -135,8 +135,8 @@ inline std::vector<float> floats_of(const Frames &c) {
 inline float facing(const Frames &c, int f, int half) {
 	v3 s;
 	for (int k = std::max(0, f - half); k <= std::min(c.F - 1, f + half); ++k) {
-		const v3 fw = mul(c.r(k, size_t(c.root)), v3{0, 0, 1});
-		s = s + v3{fw.x, 0, fw.z};
+		const v3 fw = mul(c.r(k, size_t(c.root)), v3{ 0, 0, 1 });
+		s = s + v3{ fw.x, 0, fw.z };
 	}
 	return std::atan2(s.x, s.z);
 }
@@ -146,8 +146,8 @@ struct Carry {
 	float yaw = 0;
 	v3 from, to;
 	v3 point(v3 p) const {
-		const v3 d = rotate_y(v3{p.x - from.x, 0, p.z - from.z}, yaw);
-		return {to.x + d.x, p.y, to.z + d.z};
+		const v3 d = rotate_y(v3{ p.x - from.x, 0, p.z - from.z }, yaw);
+		return { to.x + d.x, p.y, to.z + d.z };
 	}
 	m3 turn(const m3 &r) const { return mul(rot_y(yaw), r); }
 };
@@ -172,9 +172,9 @@ inline float step_deg(const Frames &c, int a, const Frames &d, int b, const Carr
 }
 
 struct LoopCut {
-	int from = 0, to = 0;    // source frames: the loop is [from, to], `to` the next pass's `from`
-	float seam_deg = 0;      // the largest joint step over the fade and the wrap
-	float ordinary_deg = 0;  // the 95th percentile of the source clip's frame steps
+	int from = 0, to = 0; // source frames: the loop is [from, to], `to` the next pass's `from`
+	float seam_deg = 0; // the largest joint step over the fade and the wrap
+	float ordinary_deg = 0; // the 95th percentile of the source clip's frame steps
 	float cost = 0;
 	Frames out;
 	bool ok() const { return seam_deg <= ordinary_deg; }
@@ -225,9 +225,9 @@ inline std::vector<std::vector<float>> keypoint_features(const Frames &c, const 
 		const float yaw = facing(c, f, half);
 		const int g = std::min(f + 1, c.F - 1), h = std::max(g - 1, 0);
 		for (size_t j = 0; j < c.J; ++j) {
-			const v3 l = to_local(world[size_t(f)][j], v3{o.x, 0, o.z}, yaw);
+			const v3 l = to_local(world[size_t(f)][j], v3{ o.x, 0, o.z }, yaw);
 			const v3 v = rotate_y((world[size_t(g)][j] - world[size_t(h)][j]) * fps, -yaw);
-			feat[size_t(f)].insert(feat[size_t(f)].end(), {l.x, l.y, l.z, v.x, v.y, v.z});
+			feat[size_t(f)].insert(feat[size_t(f)].end(), { l.x, l.y, l.z, v.x, v.y, v.z });
 		}
 	}
 	const size_t D = feat.empty() ? 0 : feat[0].size();
