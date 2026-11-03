@@ -37,7 +37,9 @@ static mm::Database g_db;
 static mm::Controller g_ctl;
 static bool g_baked = false;
 
-static Variant text(const std::string &s) { return Variant(String(s)); }
+static Variant text(const std::string &s) {
+	return Variant(String(s));
+}
 
 static Variant mm_clear() {
 	g_db = mm::Database();
@@ -103,20 +105,20 @@ static Variant mm_reset(double x, double z, double yaw, int64_t clip) {
 		return text("FAIL not baked");
 	}
 	const int c = int(clip) >= 0 && size_t(clip) < g_db.clips.size() ? int(clip) : 0;
-	g_ctl.reset(mm::v3{float(x), 0, float(z)}, float(yaw), c);
+	g_ctl.reset(mm::v3{ float(x), 0, float(z) }, float(yaw), c);
 	return text("RESET " + g_db.clips[size_t(c)].name);
 }
 
 static Variant mm_step(double dt, double vx, double vz, double facing, int64_t mode, int64_t jump) {
 	std::vector<float> out;
 	if (g_baked) {
-		const bool sw = g_ctl.update(float(dt), mm::v3{float(vx), 0, float(vz)}, float(facing), int(mode), jump != 0);
+		const bool sw = g_ctl.update(float(dt), mm::v3{ float(vx), 0, float(vz) }, float(facing), int(mode), jump != 0);
 		const mm::Clip &c = g_db.clips[size_t(g_ctl.clip)];
 		const mm::v3 r = mm::Database::sample_root(c, g_ctl.time);
 		const int f = std::clamp(int(std::lround(g_ctl.time * c.fps)), 0, c.frames - 1);
-		out = {float(g_ctl.clip), g_ctl.time, g_ctl.char_pos.x, g_ctl.char_pos.z, g_ctl.char_yaw, r.x, r.z,
-				mm::Database::sample_yaw(c, g_ctl.time), sw ? 1.0f : 0.0f, g_ctl.last_cost, g_ctl.sim_pos.x,
-				g_ctl.sim_pos.z, g_ctl.sim_yaw, float(c.kind[size_t(f)]), g_ctl.jumping() ? 1.0f : 0.0f};
+		out = { float(g_ctl.clip), g_ctl.time, g_ctl.char_pos.x, g_ctl.char_pos.z, g_ctl.char_yaw, r.x, r.z,
+			mm::Database::sample_yaw(c, g_ctl.time), sw ? 1.0f : 0.0f, g_ctl.last_cost, g_ctl.sim_pos.x,
+			g_ctl.sim_pos.z, g_ctl.sim_yaw, float(c.kind[size_t(f)]), g_ctl.jumping() ? 1.0f : 0.0f };
 	}
 	return Variant(PackedArray<float>(out));
 }
@@ -126,7 +128,7 @@ static Variant mm_step(double dt, double vx, double vz, double facing, int64_t m
 static Variant mm_modes() {
 	std::string out;
 	char line[128];
-	const char *names[] = {"stand", "crouch", "crawl", "jump"};
+	const char *names[] = { "stand", "crouch", "crawl", "jump" };
 	for (int m = 0; m < mm::kModes; ++m) {
 		std::vector<float> v;
 		for (int i : g_db.mode_rows[m]) {

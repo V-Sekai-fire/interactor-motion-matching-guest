@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
 		}
 		if (support_names.empty()) {
 			auto at = [&](const char *n) { return int(std::find(names.begin(), names.end(), n) - names.begin()); };
-			for (int s : mm::Database::support_joints(parents, {at(db.bone_names[0].c_str()), at(db.bone_names[1].c_str())}, at("Head"))) {
+			for (int s : mm::Database::support_joints(parents, { at(db.bone_names[0].c_str()), at(db.bone_names[1].c_str()) }, at("Head"))) {
 				support_names += (support_names.empty() ? "" : ",") + names[size_t(s)];
 			}
 		}
@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
 		feet_only.push_back(c.kind);
 	}
 	auto counts = [](const std::vector<uint8_t> &k) {
-		int n[6] = {0, 0, 0, 0, 0, 0};
+		int n[6] = { 0, 0, 0, 0, 0, 0 };
 		for (uint8_t x : k) {
 			++n[x];
 		}

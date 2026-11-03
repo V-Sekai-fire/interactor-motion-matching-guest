@@ -12,13 +12,12 @@
 //    tolerance. --plant-phase switches the phase rule off, which must make this check fail.
 #include "mm_core.hpp"
 
-#include <cstdio>
 #include <dirent.h>
+#include <cstdio>
 #include <fstream>
 #include <map>
 #include <random>
 #include <sstream>
-
 
 static bool read_clip(const std::string &dir, std::vector<std::string> &names, std::vector<int32_t> &parents,
 		std::vector<float> &xf, float &fps) {
@@ -102,7 +101,7 @@ int main(int argc, char **argv) {
 		const std::string k = path.substr(path.find_last_of('/') + 1);
 		const bool loop = std::ifstream(path + "/loop.txt").good();
 		if (fps > 31) {
-			fast.push_back({k, names, parents, xf, fps});
+			fast.push_back({ k, names, parents, xf, fps });
 		}
 		std::printf("%s%s\n", db.add_clip(k, names, parents, xf, fps, loop).c_str(), loop ? " loop" : "");
 		std::vector<float> ph;
@@ -167,13 +166,13 @@ int main(int argc, char **argv) {
 		float jump_at;
 	};
 	const Case cases[] = {
-			{"stand", 0.0f, -1, 0, "idle|turn|stop", mm::Stand, -1},
-			{"walk", 1.3f, -1, 0, "walk", mm::Stand, -1},
-			{"run", 3.5f, -1, 0, "run|jog", mm::Stand, -1},
-			{"turn", 1.3f, 3.0f, mm::kPi / 2, "walk|turn", mm::Stand, -1},
-			{"crouch", 0.8f, -1, 0, "crouch", mm::Crouch, -1},
-			{"crawl", 0.4f, -1, 0, "crawl", mm::Crawl, -1},
-			{"jump", 1.3f, -1, 0, "jump", mm::Stand, 3.0f},
+		{ "stand", 0.0f, -1, 0, "idle|turn|stop", mm::Stand, -1 },
+		{ "walk", 1.3f, -1, 0, "walk", mm::Stand, -1 },
+		{ "run", 3.5f, -1, 0, "run|jog", mm::Stand, -1 },
+		{ "turn", 1.3f, 3.0f, mm::kPi / 2, "walk|turn", mm::Stand, -1 },
+		{ "crouch", 0.8f, -1, 0, "crouch", mm::Crouch, -1 },
+		{ "crawl", 0.4f, -1, 0, "crawl", mm::Crawl, -1 },
+		{ "jump", 1.3f, -1, 0, "jump", mm::Stand, 3.0f },
 	};
 	for (const Case &c : cases) {
 		if (c.mode != mm::Stand && !db.has_mode(c.mode)) {
@@ -199,7 +198,7 @@ int main(int argc, char **argv) {
 			}
 			const bool press = c.jump_at >= 0 && !jumped && t >= c.jump_at;
 			jumped = jumped || press;
-			ctl.update(dt, mm::v3{std::sin(heading) * c.speed, 0, std::cos(heading) * c.speed},
+			ctl.update(dt, mm::v3{ std::sin(heading) * c.speed, 0, std::cos(heading) * c.speed },
 					std::numeric_limits<float>::quiet_NaN(), c.mode, press);
 			const mm::Clip &pc = db.clips[size_t(ctl.clip)];
 			const int pf = std::clamp(int(std::lround(ctl.time * pc.fps)), 0, pc.frames - 1);
@@ -263,7 +262,7 @@ int main(int argc, char **argv) {
 		const mm::Clip &k = db.clips[size_t(ci)];
 		return k.curve[size_t(std::clamp(int(std::lround(t * k.fps)), 0, k.frames - 1))];
 	};
-	for (const float speed : {1.3f, 2.5f, 3.5f}) {
+	for (const float speed : { 1.3f, 2.5f, 3.5f }) {
 		mm::Controller ctl;
 		ctl.db = &db;
 		ctl.reset({}, 0, 0);
@@ -271,7 +270,7 @@ int main(int argc, char **argv) {
 		int joins = 0, off = 0, backs = 0, prev_clip = -1, prev_wraps = 0;
 		float prev_time = 0, worst = 0;
 		for (int i = 0; i < 144 * 60; ++i) {
-			ctl.update(dt, mm::v3{0, 0, speed}, std::numeric_limits<float>::quiet_NaN(), mm::Stand, false);
+			ctl.update(dt, mm::v3{ 0, 0, speed }, std::numeric_limits<float>::quiet_NaN(), mm::Stand, false);
 			const bool wrapped = ctl.wraps != prev_wraps;
 			prev_wraps = ctl.wraps;
 			const bool goes_on = ctl.clip == prev_clip && ctl.time >= prev_time && ctl.time <= prev_time + 2 * dt;

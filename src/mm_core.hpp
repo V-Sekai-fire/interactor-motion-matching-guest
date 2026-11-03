@@ -25,14 +25,22 @@ namespace mm {
 struct v3 {
 	float x = 0, y = 0, z = 0;
 };
-inline v3 operator+(v3 a, v3 b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
-inline v3 operator-(v3 a, v3 b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
-inline v3 operator*(v3 a, float s) { return {a.x * s, a.y * s, a.z * s}; }
-inline float len(v3 a) { return std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z); }
+inline v3 operator+(v3 a, v3 b) {
+	return { a.x + b.x, a.y + b.y, a.z + b.z };
+}
+inline v3 operator-(v3 a, v3 b) {
+	return { a.x - b.x, a.y - b.y, a.z - b.z };
+}
+inline v3 operator*(v3 a, float s) {
+	return { a.x * s, a.y * s, a.z * s };
+}
+inline float len(v3 a) {
+	return std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+}
 
 // Row-major 3x3 acting on column vectors, as motion.elf writes it.
 struct m3 {
-	float m[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+	float m[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
 };
 inline m3 mul(const m3 &a, const m3 &b) {
 	m3 r;
@@ -44,8 +52,8 @@ inline m3 mul(const m3 &a, const m3 &b) {
 	return r;
 }
 inline v3 mul(const m3 &a, v3 v) {
-	return {a.m[0] * v.x + a.m[1] * v.y + a.m[2] * v.z, a.m[3] * v.x + a.m[4] * v.y + a.m[5] * v.z,
-		a.m[6] * v.x + a.m[7] * v.y + a.m[8] * v.z};
+	return { a.m[0] * v.x + a.m[1] * v.y + a.m[2] * v.z, a.m[3] * v.x + a.m[4] * v.y + a.m[5] * v.z,
+		a.m[6] * v.x + a.m[7] * v.y + a.m[8] * v.z };
 }
 
 constexpr float kPi = 3.14159265358979f;
@@ -62,16 +70,20 @@ inline float wrap_angle(float a) {
 inline v3 to_local(v3 p, v3 origin, float yaw) {
 	const v3 d = p - origin;
 	const float c = std::cos(yaw), s = std::sin(yaw);
-	return {c * d.x - s * d.z, d.y, s * d.x + c * d.z};
+	return { c * d.x - s * d.z, d.y, s * d.x + c * d.z };
 }
 inline v3 rotate_y(v3 d, float yaw) {
 	const float c = std::cos(yaw), s = std::sin(yaw);
-	return {c * d.x + s * d.z, d.y, -s * d.x + c * d.z};
+	return { c * d.x + s * d.z, d.y, -s * d.x + c * d.z };
 }
 
 // Spring (spring.hpp): Holden's critically damped spring on a velocity.
-inline float fast_negexp(float x) { return 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x); }
-inline float halflife_to_damping(float halflife, float eps = 1e-5f) { return (4.0f * 0.69314718056f) / (halflife + eps); }
+inline float fast_negexp(float x) {
+	return 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
+}
+inline float halflife_to_damping(float halflife, float eps = 1e-5f) {
+	return (4.0f * 0.69314718056f) / (halflife + eps);
+}
 inline void simple_spring_damper_exact(v3 &x, v3 &v, v3 goal, float halflife, float dt) {
 	const float y = halflife_to_damping(halflife) / 2.0f;
 	const v3 j0 = x - goal;
@@ -80,7 +92,9 @@ inline void simple_spring_damper_exact(v3 &x, v3 &v, v3 goal, float halflife, fl
 	x = (j0 + j1 * dt) * eydt + goal;
 	v = (v - j1 * (y * dt)) * eydt;
 }
-inline float damp_factor(float halflife, float dt) { return 1.0f - fast_negexp((0.69314718056f * dt) / (halflife + 1e-8f)); }
+inline float damp_factor(float halflife, float dt) {
+	return 1.0f - fast_negexp((0.69314718056f * dt) / (halflife + 1e-8f));
+}
 
 // The k-d tree (algo/kd_tree.cpp), unchanged apart from std types.
 class KDTree {
@@ -193,34 +207,39 @@ struct Clip {
 // through to landing.
 // Between marks a short stretch of one kind inside another (a bend while walking, the stand-up of
 // a crawl): it is played through but never matched.
-enum Mode : uint8_t { Stand = 0, Crouch = 1, Crawl = 2, Jump = 3, Air = 4, Between = 5 };
+enum Mode : uint8_t { Stand = 0,
+	Crouch = 1,
+	Crawl = 2,
+	Jump = 3,
+	Air = 4,
+	Between = 5 };
 constexpr int kModes = 4;
 
 struct Settings {
-	int future = 3;            // trajectory_point_count
+	int future = 3; // trajectory_point_count
 	float future_dt = 1.0f / 3; // trajectory_delta_time
-	int past = 1;              // history_point_count
-	float past_dt = 1.0f / 3;  // history_delta_time
+	int past = 1; // history_point_count
+	float past_dt = 1.0f / 3; // history_delta_time
 	float w_traj_pos = 1.0f, w_traj_facing = 1.0f, w_bone_pos = 1.0f, w_bone_vel = 1.0f;
-	float halflife = 0.27f;        // the velocity spring
-	float search_every = 0.1f;     // seconds between searches
+	float halflife = 0.27f; // the velocity spring
+	float search_every = 0.1f; // seconds between searches
 	float same_clip_window = 0.2f; // a match this close to the playing frame is not a switch
-	float switch_margin = 0.2f;    // the new pose must beat the playing pose's cost by this much
-	float sync_halflife = 0.2f;    // the character is pulled toward the simulation
-	float sync_clamp = 0.15f;      // and kept at most this far from it (metres)
-	float facing_smooth = 0.25f;   // seconds either side for the root facing
-	float vel_dt = 1.0f / 30;      // seconds either side for a bone velocity (one 30 fps frame)
-	float end_margin = 1.0f;       // poses this close to a clip's end are never matched (a match plays at least this long)
-	float crouch_head = 0.82f;     // a head below this share of a standing head is crouching
-	float crawl_head = 0.45f;      // and below this, crawling
-	float air_feet = 0.08f;        // both feet this far above the clip's ground: in the air (metres)
+	float switch_margin = 0.2f; // the new pose must beat the playing pose's cost by this much
+	float sync_halflife = 0.2f; // the character is pulled toward the simulation
+	float sync_clamp = 0.15f; // and kept at most this far from it (metres)
+	float facing_smooth = 0.25f; // seconds either side for the root facing
+	float vel_dt = 1.0f / 30; // seconds either side for a bone velocity (one 30 fps frame)
+	float end_margin = 1.0f; // poses this close to a clip's end are never matched (a match plays at least this long)
+	float crouch_head = 0.82f; // a head below this share of a standing head is crouching
+	float crawl_head = 0.45f; // and below this, crawling
+	float air_feet = 0.08f; // both feet this far above the clip's ground: in the air (metres)
 	float takeoff_from = 0.45f, takeoff_to = 0.1f; // take-off poses: this long before the feet leave
-	float min_air = 0.15f;         // a shorter flight is a step, not a jump
-	float min_run = 0.75f;         // a stand, crouch or crawl shorter than this is Between
-	float phase_tol = 0.06f;       // a switch between two cycling poses keeps the phase this close (0: off)
-	float strike_feet = 0.05f;     // a foot this near the clip's ground, and
-	float strike_speed = 0.5f;     // this slow on the floor (m/s), is planted
-	bool hand_support = true;      // knees and hands on the floor carry the body (classify)
+	float min_air = 0.15f; // a shorter flight is a step, not a jump
+	float min_run = 0.75f; // a stand, crouch or crawl shorter than this is Between
+	float phase_tol = 0.06f; // a switch between two cycling poses keeps the phase this close (0: off)
+	float strike_feet = 0.05f; // a foot this near the clip's ground, and
+	float strike_speed = 0.5f; // this slow on the floor (m/s), is planted
+	bool hand_support = true; // knees and hands on the floor carry the body (classify)
 	float min_cycle = 0.4f, max_cycle = 2.0f; // a gait cycle lasts this long
 };
 
@@ -228,7 +247,7 @@ class Database {
 public:
 	Settings settings;
 	std::vector<Clip> clips;
-	std::vector<std::string> bone_names{"LeftFoot", "RightFoot", "Hips"};
+	std::vector<std::string> bone_names{ "LeftFoot", "RightFoot", "Hips" };
 
 	// A SOMA30 clip in motion.elf's layout: per frame, per joint, the parent-local row-major 3x3
 	// then the translation (the root's is its position, the others their rest offset).
@@ -253,7 +272,7 @@ public:
 			want.push_back(int(it - names.begin()));
 		}
 		const int hips = want.back();
-		const std::vector<int> sup = support_joints(parents, {want[0], want[1]}, int(head));
+		const std::vector<int> sup = support_joints(parents, { want[0], want[1] }, int(head));
 		Clip c;
 		c.supports = int(sup.size());
 		c.name = name;
@@ -268,7 +287,7 @@ public:
 				const float *o = &xf[(size_t(f) * J + j) * 12];
 				m3 r;
 				std::copy(o, o + 9, r.m);
-				const v3 t{o[9], o[10], o[11]};
+				const v3 t{ o[9], o[10], o[11] };
 				const int p = parents[j];
 				if (p < 0) {
 					gr[j] = r;
@@ -278,8 +297,8 @@ public:
 					gp[j] = gp[size_t(p)] + mul(gr[size_t(p)], t);
 				}
 			}
-			c.root.push_back({gp[size_t(hips)].x, 0, gp[size_t(hips)].z});
-			fwd[size_t(f)] = mul(gr[size_t(hips)], v3{0, 0, 1});
+			c.root.push_back({ gp[size_t(hips)].x, 0, gp[size_t(hips)].z });
+			fwd[size_t(f)] = mul(gr[size_t(hips)], v3{ 0, 0, 1 });
 			for (int b : want) {
 				c.bones.push_back(gp[size_t(b)]);
 			}
@@ -305,9 +324,9 @@ public:
 				// A loop's window runs on into the next pass (or back into the last), turned with it.
 				if (c.loop && (k < 0 || k > L)) {
 					const v3 w = k > L ? fwd[size_t(k - L)] : fwd[size_t(k + L)];
-					s = s + rotate_y(v3{w.x, 0, w.z}, k > L ? c.loop_yaw : -c.loop_yaw) * w8;
+					s = s + rotate_y(v3{ w.x, 0, w.z }, k > L ? c.loop_yaw : -c.loop_yaw) * w8;
 				} else if (k >= 0 && k <= L) {
-					s = s + v3{fwd[size_t(k)].x, 0, fwd[size_t(k)].z} * w8;
+					s = s + v3{ fwd[size_t(k)].x, 0, fwd[size_t(k)].z } * w8;
 				}
 			}
 			c.yaw.push_back(std::atan2(s.x, s.z));
@@ -545,7 +564,7 @@ public:
 			// A flight shorter than a jump is a running stride: it takes the kind before it.
 			relabel_short(c, Air, settings.min_air, true);
 			// Short stretches of one kind inside another are Between.
-			for (uint8_t k : {uint8_t(Stand), uint8_t(Crouch), uint8_t(Crawl)}) {
+			for (uint8_t k : { uint8_t(Stand), uint8_t(Crouch), uint8_t(Crawl) }) {
 				relabel_short(c, k, settings.min_run, false);
 			}
 			for (size_t a = 0; a < F;) {
@@ -868,8 +887,8 @@ struct Controller {
 	};
 	std::vector<Past> history;
 	float clock = 0;
-	int mode = Stand;          // the kind of pose asked for (Stand, Crouch or Crawl)
-	float locked_until = -1;   // a jump plays through to here in its clip before searching again
+	int mode = Stand; // the kind of pose asked for (Stand, Crouch or Crawl)
+	float locked_until = -1; // a jump plays through to here in its clip before searching again
 	int jumps = 0;
 
 	void reset(v3 pos, float yaw, int start_clip) {
@@ -899,7 +918,7 @@ struct Controller {
 			sim_yaw = std::atan2(sim_vel.x, sim_vel.z);
 		}
 		clock += dt;
-		history.push_back({clock, sim_pos, sim_yaw});
+		history.push_back({ clock, sim_pos, sim_yaw });
 		const float oldest = clock - s.past_dt * float(s.past) - 0.5f;
 		size_t drop = 0;
 		while (drop + 1 < history.size() && history[drop + 1].t < oldest) {
@@ -913,7 +932,7 @@ struct Controller {
 		const float t1 = c0.loop ? time + dt : std::min(time + dt, len_s);
 		const v3 d_local = to_local(Database::root_at(c0, t1), Database::root_at(c0, time), Database::yaw_at(c0, time));
 		const float d_yaw = wrap_angle(Database::yaw_at(c0, t1) - Database::yaw_at(c0, time));
-		char_pos = char_pos + rotate_y(v3{d_local.x, 0, d_local.z}, char_yaw);
+		char_pos = char_pos + rotate_y(v3{ d_local.x, 0, d_local.z }, char_yaw);
 		char_yaw = wrap_angle(char_yaw + d_yaw);
 		time = t1;
 		if (c0.loop && time >= len_s) {
